@@ -140,5 +140,5 @@ end
     addvar!(model, lbs, ubs)
     add_sd_constraint!(model, sd_constraint)
 
-    @test_warn "The solver used does not support semidefinite constraints so they will be ignored." optimize(model, IpoptAlg(), x0, options=IpoptOptions(max_iter=1, first_order=true))
+    @test_logs (:warn, "The solver used does not support semidefinite constraints so they will be ignored.") optimize(model, IpoptAlg(), x0, options=IpoptOptions(max_iter=1, first_order=true))
 end
