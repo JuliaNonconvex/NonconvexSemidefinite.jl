@@ -95,8 +95,8 @@ end
     keep_all::Bool
 end
 function SDPBarrierOptions(c_init, c_decr, n_iter; sub_options, keep_all=true)
-    @assert 0 < c_decr < 1 "c_decr should be between 0 and 1. "
-    @assert c_init > 0 "c_init shoule be larger than 0. "
+    @assert all(0 .< c_decr .< 1) "c_decr should be between 0 and 1. "
+    @assert all(c_init .> 0) "c_init shoule be larger than 0. "
     SDPBarrierOptions(c_init, c_decr, n_iter, sub_options, keep_all)
 end
 function SDPBarrierOptions(;sub_options, c_init=1.0, c_decr=0.1, n_iter=10, keep_all=true)
