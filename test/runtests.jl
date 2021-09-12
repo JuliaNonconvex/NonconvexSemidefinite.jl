@@ -16,6 +16,7 @@ function random_psd_mat(mat_dim)
     _mat = randn(mat_dim, mat_dim)
     return _mat' * _mat
 end
+
 function sd_constraint((x_L, x_D))
     decompress_symmetric(x_L, x_D)
 end
@@ -94,7 +95,10 @@ end
     add_sd_constraint!(model, x -> sd_constraint(x[3:4]))
 
     alg = SDPBarrierAlg(sub_alg=IpoptAlg())
-    options = SDPBarrierOptions(sub_options=IpoptOptions(max_iter=200))
+    options = SDPBarrierOptions(sub_options=IpoptOptions(max_iter=200), 
+                                keep_all=false, 
+                                c_init=[1.5, 2.0], 
+                                c_decr=[0.2, 0.1])
     result = optimize(model, alg, x0, options = options)
 
     minimum, minimizer, optimal_ind = result.minimum, result.minimizer, result.optimal_ind
