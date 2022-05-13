@@ -56,6 +56,11 @@ function ChainRulesCore.rrule(::typeof(rearrange_x), x_L::AbstractVector, x_D::A
     return rearrange_x(x_L, x_D), pullback
 end
 
+"""
+    SDPBarrierAlg(sub_alg)
+
+A meta-algorithm that handles semidefinite constraints on nonlinear functions using a barrier approach. The coefficient of the barrier term is exponentially decayed and the sub-problems are solved using `sub_alg`. `sub_alg` can be any other compatible solver from `Nonconvex.jl`. The solver must be able to solve the sub-problem after removing the semidefinite constraints. The options to the solver should be pased to the [`SDPBarrierOptions`](@ref) struct and passed in as the options to the `optimize` function. Call `? SDPBarrierOptions` to check all the different options that can be set.
+"""
 struct SDPBarrierAlg{Alg <: AbstractOptimizer} <: AbstractOptimizer
     sub_alg::Alg
 end
@@ -76,8 +81,7 @@ The keyword arguments which can be specified are:
 - `c_decr`: (default 0.1) decreasing rate (< 1) that multiplies the barrier term in every iteration, could be either a real number or a vector in the case of multiple semidefinite constraints.
 - `n_iter`: (default 20) number of sub-problems to solve in the barrier method.
 - `sub_options`: options for the sub-problem's solver
-- `keep_all`: if set to `true`, `SDPBarrierResult` stores the results from all the iterations
-- `sub_alg`: algorithm to solve underlying optimization sub-problem, which should be in consistent with `sub_options` in `SDPBarrierOptions`.
+- `keep_all`: (default `falue`) if set to `true`, `SDPBarrierResult` stores the results from all the iterations
 """
 @params mutable struct SDPBarrierOptions
     # Dimension of objective matrix
