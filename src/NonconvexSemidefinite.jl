@@ -29,7 +29,8 @@ end
 
 """
     decompress_symmetric
-    For example: 
+
+For example: 
     a 3*3 positive semidefinite matrix: 
     `[  a       b       d; 
         b       c       e; 
@@ -55,10 +56,6 @@ function ChainRulesCore.rrule(::typeof(rearrange_x), x_L::AbstractVector, x_D::A
     return rearrange_x(x_L, x_D), pullback
 end
 
-"""
-    SDPBarrierAlg: a meta-algorithm used for Semidefinite barrier programming
-- `sub_alg`: algorithm to solve underlying optimization objective, which should be in consistent with `sub_options` of `SDPBarrierOptions`
-"""
 struct SDPBarrierAlg{Alg <: AbstractOptimizer} <: AbstractOptimizer
     sub_alg::Alg
 end
@@ -72,13 +69,15 @@ end
 
 
 """
-    SDPBarrierOptions: options for sdp programming
-- `c_init`: initial multiplier `c` for barrier, could be a real number or vector. Vector input is for the case that objective contains multiple matrix and each element of vector for corresponding one of them
-- `c_decr`: decreasing rate that multiplies `c` in every iteration. Could be either a real number of a vector, same as `c_init`
-- `n_iter`: how many iterations in total for barrier method
-- `sub_options`: options to solve underlying optimization target
-- `keep_all`: if set to `True`, `SDPBarrierResult` keeps all results in each iteration but not only optima
-- `sub_alg`: algorithm to solve underlying optimization objective, which should be in consistent with `sub_options` in `SDPBarrierOptions`
+    SDPBarrierOptions(; kwargs...)
+
+The keyword arguments which can be specified are:
+- `c_init`: (default 1.0) initial value for the coefficient `c` that is multiplied by the barrier term, could be a real number or vector in the case of multiple semidefinite constraints.
+- `c_decr`: (default 0.1) decreasing rate (< 1) that multiplies the barrier term in every iteration, could be either a real number or a vector in the case of multiple semidefinite constraints.
+- `n_iter`: (default 20) number of sub-problems to solve in the barrier method.
+- `sub_options`: options for the sub-problem's solver
+- `keep_all`: if set to `true`, `SDPBarrierResult` stores the results from all the iterations
+- `sub_alg`: algorithm to solve underlying optimization sub-problem, which should be in consistent with `sub_options` in `SDPBarrierOptions`.
 """
 @params mutable struct SDPBarrierOptions
     # Dimension of objective matrix
@@ -94,12 +93,12 @@ end
     # Keep all results or not
     keep_all::Bool
 end
-function SDPBarrierOptions(c_init, c_decr, n_iter; sub_options, keep_all=true)
+function SDPBarrierOptions(c_init, c_decr, n_iter; sub_options, keep_all=false)
     @assert all(0 .< c_decr .< 1) "c_decr should be between 0 and 1. "
     @assert all(c_init .> 0) "c_init shoule be larger than 0. "
     SDPBarrierOptions(c_init, c_decr, n_iter, sub_options, keep_all)
 end
-function SDPBarrierOptions(;sub_options, c_init=1.0, c_decr=0.1, n_iter=10, keep_all=true)
+function SDPBarrierOptions(;sub_options, c_init=1.0, c_decr=0.1, n_iter=20, keep_all=false)
     SDPBarrierOptions(c_init, c_decr, n_iter, sub_options=sub_options, keep_all=keep_all)
 end
 
@@ -135,10 +134,27 @@ function Workspace(model::VecModel, optimizer::SDPBarrierAlg, x0, args...; optio
     return SDPBarrierWorkspace(model, copy(x0), options, optimizer.sub_alg)
 end
 
+safe_logdet(A::AbstractMatrix) = try
+    return logdet(A)
+catch err
+    if err isa DomainError
+        return -Inf
+    else
+        rethrow(err)
+    end
+end
+function ChainRulesCore.rrule(rc::RuleConfig, ::typeof(safe_logdet), A::AbstractMatrix)
+    try
+        return rrule_via_ad(rc, logdet, A)
+    catch
+        -Inf, _ -> (NoTangent(), similar(A) .= NaN)
+    end
+end
+
 function sd_objective(objective0, sd_constraints, c::AbstractArray)
     function _objective(args)
         target = objective0(args)
-        barrier = sum(c .* -logdet.(map(f -> f(args), sd_constraints.fs)))
+        barrier = sum(c .* -safe_logdet.(map(f -> f(args), sd_constraints.fs)))
         return target + barrier
     end
     return _objective
