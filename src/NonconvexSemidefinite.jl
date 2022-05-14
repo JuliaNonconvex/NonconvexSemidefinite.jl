@@ -149,9 +149,9 @@ catch err
 end
 function ChainRulesCore.rrule(rc::RuleConfig, ::typeof(safe_logdet), A::AbstractMatrix)
     try
-        return rrule_via_ad(rc, logdet, A)
+        return rrule_via_ad(rc, A -> logdet(cholesky(A)), A)
     catch
-        -Inf, _ -> (NoTangent(), similar(A) .= NaN)
+        return -Inf, _ -> (NoTangent(), similar(A) .= NaN)
     end
 end
 
