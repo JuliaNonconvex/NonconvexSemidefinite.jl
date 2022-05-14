@@ -139,7 +139,7 @@ function Workspace(model::VecModel, optimizer::SDPBarrierAlg, x0, args...; optio
 end
 
 safe_logdet(A::AbstractMatrix) = try
-    return logdet(A)
+    return logdet(cholesky(A))
 catch err
     if err isa DomainError
         return -Inf
@@ -181,6 +181,7 @@ function optimize!(workspace::SDPBarrierWorkspace)
         model_i = to_barrier(model, c)
         result_i = optimize(model_i, sub_alg, x, options = sub_options)
         minimizer_i = result_i.minimizer
+        @info NonconvexCore.getobjective(model_i)(result_i.minimizer)
         push!(results, (objective0(minimizer_i), minimizer_i))
         c = c .* c_decr
         x = copy(minimizer_i)
