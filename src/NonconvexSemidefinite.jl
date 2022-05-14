@@ -138,20 +138,12 @@ function Workspace(model::VecModel, optimizer::SDPBarrierAlg, x0, args...; optio
     return SDPBarrierWorkspace(model, copy(x0), options, optimizer.sub_alg)
 end
 
-safe_logdet(A::AbstractMatrix) = try
-    return logdet(cholesky(A))
-catch err
-    if err isa DomainError
-        return -Inf
+function safe_logdet(A::AbstractMatrix)
+    c = cholesky(A, check = false)
+    if issuccess(c)
+        return logdet(c)
     else
-        rethrow(err)
-    end
-end
-function ChainRulesCore.rrule(rc::RuleConfig, ::typeof(safe_logdet), A::AbstractMatrix)
-    try
-        return rrule_via_ad(rc, A -> logdet(cholesky(A)), A)
-    catch
-        return -Inf, _ -> (NoTangent(), similar(A) .= NaN)
+        return -Inf
     end
 end
 
