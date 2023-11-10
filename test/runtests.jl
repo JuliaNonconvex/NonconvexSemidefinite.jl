@@ -9,7 +9,11 @@ mat_length = mat_dim^2
 n_sample = 300
 
 @testset "Test matrix to vectors function" begin
-    test_rrule(NonconvexSemidefinite.rearrange_x, rand((mat_dim^2-mat_dim)÷2), rand(mat_dim))
+    test_rrule(
+        NonconvexSemidefinite.rearrange_x,
+        rand((mat_dim^2 - mat_dim) ÷ 2),
+        rand(mat_dim),
+    )
 end
 
 function random_psd_mat(mat_dim)
@@ -43,8 +47,8 @@ end
 
     add_sd_constraint!(model, sd_constraint)
 
-    alg = SDPBarrierAlg(sub_alg=IpoptAlg())
-    options = SDPBarrierOptions(sub_options=IpoptOptions(max_iter=200))
+    alg = SDPBarrierAlg(sub_alg = IpoptAlg())
+    options = SDPBarrierOptions(sub_options = IpoptOptions(max_iter = 200))
     result = optimize(model, alg, x0, options = options)
 
     minimum, minimizer, optimal_ind = result.minimum, result.minimizer, result.optimal_ind
@@ -74,8 +78,8 @@ end
 
     # Objective function
     function f((x_L1, x_D1, x_L2, x_D2))
-        -loglikelihood(MvNormal(μ1, decompress_symmetric(x_L1, x_D1)), samples1) - 
-            loglikelihood(MvNormal(μ2, decompress_symmetric(x_L2, x_D2)), samples2)
+        -loglikelihood(MvNormal(μ1, decompress_symmetric(x_L1, x_D1)), samples1) -
+        loglikelihood(MvNormal(μ2, decompress_symmetric(x_L2, x_D2)), samples2)
     end
     model = Model(f)
 
@@ -94,11 +98,13 @@ end
     add_sd_constraint!(model, x -> sd_constraint(x[1:2]))
     add_sd_constraint!(model, x -> sd_constraint(x[3:4]))
 
-    alg = SDPBarrierAlg(sub_alg=IpoptAlg())
-    options = SDPBarrierOptions(sub_options=IpoptOptions(max_iter=200), 
-                                keep_all=false, 
-                                c_init=[1.5, 2.0], 
-                                c_decr=[0.2, 0.1])
+    alg = SDPBarrierAlg(sub_alg = IpoptAlg())
+    options = SDPBarrierOptions(
+        sub_options = IpoptOptions(max_iter = 200),
+        keep_all = false,
+        c_init = [1.5, 2.0],
+        c_decr = [0.2, 0.1],
+    )
     result = optimize(model, alg, x0, options = options)
 
     minimum, minimizer, optimal_ind = result.minimum, result.minimizer, result.optimal_ind
@@ -144,5 +150,13 @@ end
     addvar!(model, lbs, ubs, init = x0)
     add_sd_constraint!(model, sd_constraint)
 
-    @test_logs (:warn, "The solver used does not support semidefinite constraints so they will be ignored.") optimize(model, IpoptAlg(), x0, options=IpoptOptions(max_iter=1, first_order=true))
+    @test_logs (
+        :warn,
+        "The solver used does not support semidefinite constraints so they will be ignored.",
+    ) optimize(
+        model,
+        IpoptAlg(),
+        x0,
+        options = IpoptOptions(max_iter = 1, first_order = true),
+    )
 end

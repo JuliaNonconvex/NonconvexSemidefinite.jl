@@ -11,7 +11,7 @@ import NonconvexCore: Workspace, optimize!, _optimize_precheck
 
 # Decompress
 function lowertriangind(mat::Matrix)
-    indices = [i for i in CartesianIndices(mat) if i[1]>i[2]]
+    indices = [i for i in CartesianIndices(mat) if i[1] > i[2]]
     return LinearIndices(mat)[indices]
 end
 
@@ -47,11 +47,15 @@ function decompress_symmetric(x_L::AbstractArray, x_D::AbstractArray)
     return decompress_symmetric(L, D)
 end
 
-function ChainRulesCore.rrule(::typeof(rearrange_x), x_L::AbstractVector, x_D::AbstractVector)
+function ChainRulesCore.rrule(
+    ::typeof(rearrange_x),
+    x_L::AbstractVector,
+    x_D::AbstractVector,
+)
     function pullback((ΔL, ΔD))
         Δx_L = ΔL[lowertriangind(ΔL)]
         Δx_D = diag(ΔD)
-        NoTangent(), Δx_L, Δx_D 
+        NoTangent(), Δx_L, Δx_D
     end
     return rearrange_x(x_L, x_D), pullback
 end
@@ -61,14 +65,19 @@ end
 
 A meta-algorithm that handles semidefinite constraints on nonlinear functions using a barrier approach. The coefficient of the barrier term is exponentially decayed and the sub-problems are solved using `sub_alg`. `sub_alg` can be any other compatible solver from `Nonconvex.jl`. The solver must be able to solve the sub-problem after removing the semidefinite constraints. The options to the solver should be pased to the [`SDPBarrierOptions`](@ref) struct and passed in as the options to the `optimize` function. Call `? SDPBarrierOptions` to check all the different options that can be set.
 """
-struct SDPBarrierAlg{Alg <: AbstractOptimizer} <: AbstractOptimizer
+struct SDPBarrierAlg{Alg<:AbstractOptimizer} <: AbstractOptimizer
     sub_alg::Alg
 end
-function SDPBarrierAlg(;sub_alg)
+function SDPBarrierAlg(; sub_alg)
     return SDPBarrierAlg(sub_alg)
 end
 
-function _optimize_precheck(model::AbstractModel, optimizer::SDPBarrierAlg, args...; kwargs...)
+function _optimize_precheck(
+    model::AbstractModel,
+    optimizer::SDPBarrierAlg,
+    args...;
+    kwargs...,
+)
     nothing
 end
 
@@ -83,7 +92,10 @@ The keyword arguments which can be specified are:
 - `sub_options`: options for the sub-problem's solver
 - `keep_all`: (default `falue`) if set to `true`, `SDPBarrierResult` stores the results from all the iterations
 """
-mutable struct SDPBarrierOptions{C1 <: Union{Real, AbstractArray}, C2 <: Union{Real, AbstractArray}}
+mutable struct SDPBarrierOptions{
+    C1<:Union{Real,AbstractArray},
+    C2<:Union{Real,AbstractArray},
+}
     # Dimension of objective matrix
     # Hyperparameters 
     # Initial value of `c` in barrier method: 
@@ -93,35 +105,59 @@ mutable struct SDPBarrierOptions{C1 <: Union{Real, AbstractArray}, C2 <: Union{R
     c_decr::C2
     n_iter::Int
     # sub_option to solve (in)equality constraints
-    sub_options
+    sub_options::Any
     # Keep all results or not
     keep_all::Bool
 end
-function SDPBarrierOptions(c_init, c_decr, n_iter; sub_options, keep_all=false)
+function SDPBarrierOptions(c_init, c_decr, n_iter; sub_options, keep_all = false)
     @assert all(0 .< c_decr .< 1) "c_decr should be between 0 and 1. "
     @assert all(c_init .> 0) "c_init shoule be larger than 0. "
     SDPBarrierOptions(c_init, c_decr, n_iter, sub_options, keep_all)
 end
-function SDPBarrierOptions(;sub_options, c_init=1.0, c_decr=0.1, n_iter=20, keep_all=false)
-    SDPBarrierOptions(c_init, c_decr, n_iter, sub_options=sub_options, keep_all=keep_all)
+function SDPBarrierOptions(;
+    sub_options,
+    c_init = 1.0,
+    c_decr = 0.1,
+    n_iter = 20,
+    keep_all = false,
+)
+    SDPBarrierOptions(
+        c_init,
+        c_decr,
+        n_iter,
+        sub_options = sub_options,
+        keep_all = keep_all,
+    )
 end
 
 # Result
-struct SDPBarrierResult{M1, M2, R, O}
+struct SDPBarrierResult{M1,M2,R,O}
     minimum::M1
     minimizer::M2
     results::R
     optimal_ind::O
 end
 
-struct SDPBarrierWorkspace{M <: VecModel, X <: AbstractVector, O <: SDPBarrierOptions, S <: AbstractOptimizer} <: Workspace
+struct SDPBarrierWorkspace{
+    M<:VecModel,
+    X<:AbstractVector,
+    O<:SDPBarrierOptions,
+    S<:AbstractOptimizer,
+} <: Workspace
     model::M
     x0::X
     options::O
     sub_alg::S
 end
 
-function Workspace(model::VecModel, optimizer::SDPBarrierAlg, x0, args...; options, kwargs...,)
+function Workspace(
+    model::VecModel,
+    optimizer::SDPBarrierAlg,
+    x0,
+    args...;
+    options,
+    kwargs...,
+)
     @unpack c_init, c_decr = options
     for c in model.sd_constraints.fs
         @assert isposdef(c(x0)) "Initial matrix should be positive definite. "
@@ -167,9 +203,9 @@ function optimize!(workspace::SDPBarrierWorkspace)
     @unpack c_init, c_decr, n_iter, sub_options, keep_all = options
     objective0 = model.objective
     x = copy(x0)
-    c = c_init isa Real ? ([c_init for _ in 1:length(model.sd_constraints.fs)]) : c_init
+    c = c_init isa Real ? ([c_init for _ = 1:length(model.sd_constraints.fs)]) : c_init
     results = []
-    for _ in 1:n_iter
+    for _ = 1:n_iter
         model_i = to_barrier(model, c)
         result_i = optimize(model_i, sub_alg, x, options = sub_options)
         minimizer_i = result_i.minimizer
