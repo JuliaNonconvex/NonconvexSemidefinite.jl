@@ -1,7 +1,7 @@
 name = "NonconvexSemidefinite"
 uuid = "9e21ff56-eb25-42d3-b86f-5b0612f555e7"
 authors = ["Mohamed Tarek <mohamed82008@gmail.com> and contributors"]
-version = "0.1.8"
+version = "0.1.9"
 
 [deps]
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
