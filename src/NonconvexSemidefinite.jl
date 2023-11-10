@@ -183,16 +183,16 @@ function safe_logdet(A::AbstractMatrix)
     end
 end
 
-function sd_objective(objective0, sd_constraints, c::AbstractArray)
+function sd_objective(objective0, sd_constraints, c::Tuple)
     function _objective(args)
         target = objective0(args)
-        barrier = sum(c .* -safe_logdet.(map(f -> f(args), sd_constraints.fs)))
+        barrier = sum(c .* .-safe_logdet.(map(f -> f(args), sd_constraints.fs)))
         return target + barrier
     end
     return _objective
 end
 
-function to_barrier(model, c::AbstractArray)
+function to_barrier(model, c::Tuple)
     sd_constraints, objective0 = model.sd_constraints, model.objective
     _model = set_objective(model, sd_objective(objective0, sd_constraints, c))
     return _model
@@ -201,17 +201,18 @@ end
 function optimize!(workspace::SDPBarrierWorkspace)
     @unpack model, x0, options, sub_alg = workspace
     @unpack c_init, c_decr, n_iter, sub_options, keep_all = options
+    _c_decr = Tuple(c_decr)
     objective0 = model.objective
     x = copy(x0)
-    c = c_init isa Real ? ([c_init for _ = 1:length(model.sd_constraints.fs)]) : c_init
-    results = []
+    obj0 = objective0(x)
+    c = c_init isa Real ? ntuple(_ -> c_init, length(model.sd_constraints.fs)) : Tuple(c_init)
+    results = Tuple{typeof(obj0), typeof(x)}[]
     for _ = 1:n_iter
         model_i = to_barrier(model, c)
         result_i = optimize(model_i, sub_alg, x, options = sub_options)
         minimizer_i = result_i.minimizer
-        @info NonconvexCore.getobjective(model_i)(result_i.minimizer)
         push!(results, (objective0(minimizer_i), minimizer_i))
-        c = c .* c_decr
+        c = c .* _c_decr
         x = copy(minimizer_i)
     end
     optimal_ind = argmin(first.(results))
