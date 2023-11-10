@@ -14,7 +14,7 @@ end
 
 function random_psd_mat(mat_dim)
     _mat = randn(mat_dim, mat_dim)
-    return _mat' * _mat
+    return _mat' * _mat + I
 end
 
 function sd_constraint((x_L, x_D))
@@ -39,7 +39,7 @@ end
     x0 = [mat_x0[NonconvexSemidefinite.lowertriangind(mat_x0)], diag(mat_x0)]
     lbs = [fill(-Inf, length(x0[1])), zeros(length(x0[2]))]
     ubs = [fill(Inf, length(x0[1])), fill(Inf, length(x0[2]))]
-    addvar!(model, lbs, ubs)
+    addvar!(model, lbs, ubs, init = x0)
 
     add_sd_constraint!(model, sd_constraint)
 
@@ -89,7 +89,7 @@ end
     ubs = [fill(Inf, length(x0[1])), fill(Inf, length(x0[2]))]
     ubs = [copy.(ubs)..., copy.(ubs)...]
 
-    addvar!(model, lbs, ubs)
+    addvar!(model, lbs, ubs, init = x0)
 
     add_sd_constraint!(model, x -> sd_constraint(x[1:2]))
     add_sd_constraint!(model, x -> sd_constraint(x[3:4]))
@@ -141,7 +141,7 @@ end
     x0 = [mat_x0[NonconvexSemidefinite.lowertriangind(mat_x0)], diag(mat_x0)]
     lbs = [fill(-Inf, length(x0[1])), zeros(length(x0[2]))]
     ubs = [fill(Inf, length(x0[1])), fill(Inf, length(x0[2]))]
-    addvar!(model, lbs, ubs)
+    addvar!(model, lbs, ubs, init = x0)
     add_sd_constraint!(model, sd_constraint)
 
     @test_logs (:warn, "The solver used does not support semidefinite constraints so they will be ignored.") optimize(model, IpoptAlg(), x0, options=IpoptOptions(max_iter=1, first_order=true))

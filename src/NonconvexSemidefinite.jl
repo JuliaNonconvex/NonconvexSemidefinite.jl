@@ -4,7 +4,7 @@ export SDPBarrierOptions, SDPBarrierAlg, decompress_symmetric
 
 using ChainRulesCore, Reexport, Parameters
 @reexport using NonconvexCore
-using NonconvexCore: @params, VecModel, AbstractOptimizer, AbstractModel, set_objective
+using NonconvexCore: VecModel, AbstractOptimizer, AbstractModel, set_objective
 import NonconvexCore: Workspace, optimize!, _optimize_precheck
 
 # Semidefinite programming
@@ -24,7 +24,7 @@ function rearrange_x(x_L::AbstractVector, x_D::AbstractVector)
 end
 
 function decompress_symmetric(L::Matrix, D::Matrix)
-    L + D + L'
+    Symmetric(L + D + L')
 end
 
 """
@@ -83,14 +83,14 @@ The keyword arguments which can be specified are:
 - `sub_options`: options for the sub-problem's solver
 - `keep_all`: (default `falue`) if set to `true`, `SDPBarrierResult` stores the results from all the iterations
 """
-@params mutable struct SDPBarrierOptions
+mutable struct SDPBarrierOptions{C1 <: Union{Real, AbstractArray}, C2 <: Union{Real, AbstractArray}}
     # Dimension of objective matrix
     # Hyperparameters 
     # Initial value of `c` in barrier method: 
     # `Real` for using same value for all `sd_constraints`, `AbstractArray` for assign them respectively
-    c_init::Union{Real, AbstractArray}
+    c_init::C1
     # Decrease rate of `c` for every epoch, same as above
-    c_decr::Union{Real, AbstractArray}
+    c_decr::C2
     n_iter::Int
     # sub_option to solve (in)equality constraints
     sub_options
@@ -107,18 +107,18 @@ function SDPBarrierOptions(;sub_options, c_init=1.0, c_decr=0.1, n_iter=20, keep
 end
 
 # Result
-@params struct SDPBarrierResult
-    minimum
-    minimizer
-    results
-    optimal_ind
+struct SDPBarrierResult{M1, M2, R, O}
+    minimum::M1
+    minimizer::M2
+    results::R
+    optimal_ind::O
 end
 
-@params struct SDPBarrierWorkspace <: Workspace
-    model::VecModel
-    x0::AbstractVector
-    options::SDPBarrierOptions
-    sub_alg::AbstractOptimizer
+struct SDPBarrierWorkspace{M <: VecModel, X <: AbstractVector, O <: SDPBarrierOptions, S <: AbstractOptimizer} <: Workspace
+    model::M
+    x0::X
+    options::O
+    sub_alg::S
 end
 
 function Workspace(model::VecModel, optimizer::SDPBarrierAlg, x0, args...; options, kwargs...,)
