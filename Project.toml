@@ -1,6 +1,6 @@
 name = "NonconvexSemidefinite"
 uuid = "9e21ff56-eb25-42d3-b86f-5b0612f555e7"
-version = "0.1.9"
+version = "0.1.10"
 authors = ["Mohamed Tarek <mohdibntarek@gmail.com> and contributors"]
 
 [deps]
@@ -13,10 +13,10 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 
 [compat]
 ChainRulesCore = "0.10, 1"
-LinearAlgebra = "1.12.0"
+LinearAlgebra = "1"
 NonconvexCore = "1.5"
 Parameters = "0.12, 0.13"
-Random = "1.11.0"
+Random = "1"
 Reexport = "1"
 julia = "1"
 
