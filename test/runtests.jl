@@ -1,6 +1,6 @@
 # Test cases of semidefinite programming
 using NonconvexSemidefinite, NonconvexIpopt, LinearAlgebra, Test
-using Distributions, ChainRulesTestUtils, Random, DistributionsAD
+using Distributions, ChainRulesTestUtils, Random, DistributionsAD, ChainRulesCore
 Random.seed!(1)
 
 # Test setting
@@ -14,6 +14,19 @@ n_sample = 300
         rand((mat_dim^2 - mat_dim) ÷ 2),
         rand(mat_dim),
     )
+end
+
+@testset "rearrange_x rrule with zero cotangents" begin
+    # Regression test: the pullback used to call lowertriangind/diag on
+    # AbstractZero cotangents, which threw MethodError.
+    y, pb = ChainRulesCore.rrule(
+        NonconvexSemidefinite.rearrange_x,
+        [0.1, 0.2, 0.3],
+        [1.0, 2.0, 3.0],
+    )
+    cotans = pb((ChainRulesCore.ZeroTangent(), ChainRulesCore.ZeroTangent()))
+    @test cotans[2] isa ChainRulesCore.AbstractZero
+    @test cotans[3] isa ChainRulesCore.AbstractZero
 end
 
 function random_psd_mat(mat_dim)
