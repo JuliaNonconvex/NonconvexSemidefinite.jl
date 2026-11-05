@@ -4,13 +4,14 @@ export SDPBarrierOptions, SDPBarrierAlg, decompress_symmetric
 
 using ChainRulesCore, Reexport, Parameters
 @reexport using NonconvexCore
-using NonconvexCore: VecModel, AbstractOptimizer, AbstractModel, set_objective
+using NonconvexCore: VecModel, AbstractOptimizer, AbstractModel
+using NonconvexCore: VectorOfFunctions, SDConstraint, Objective
 import NonconvexCore: Workspace, optimize!, _optimize_precheck
 
 # Semidefinite programming
 
 # Decompress
-function lowertriangind(mat::Matrix)
+function lowertriangind(mat::AbstractMatrix)
     indices = [i for i in CartesianIndices(mat) if i[1] > i[2]]
     return LinearIndices(mat)[indices]
 end
@@ -53,9 +54,12 @@ function ChainRulesCore.rrule(
     x_D::AbstractVector,
 )
     function pullback((ΔL, ΔD))
+        if ΔL isa ChainRulesCore.AbstractZero || ΔD isa ChainRulesCore.AbstractZero
+            return NoTangent(), ZeroTangent(), ZeroTangent()
+        end
         Δx_L = ΔL[lowertriangind(ΔL)]
         Δx_D = diag(ΔD)
-        NoTangent(), Δx_L, Δx_D
+        return NoTangent(), Δx_L, Δx_D
     end
     return rearrange_x(x_L, x_D), pullback
 end
@@ -95,6 +99,7 @@ The keyword arguments which can be specified are:
 mutable struct SDPBarrierOptions{
     C1<:Union{Real,AbstractArray},
     C2<:Union{Real,AbstractArray},
+    SO,
 }
     # Dimension of objective matrix
     # Hyperparameters 
@@ -105,7 +110,7 @@ mutable struct SDPBarrierOptions{
     c_decr::C2
     n_iter::Int
     # sub_option to solve (in)equality constraints
-    sub_options::Any
+    sub_options::SO
     # Keep all results or not
     keep_all::Bool
 end
@@ -194,8 +199,21 @@ end
 
 function to_barrier(model, c::Tuple)
     sd_constraints, objective0 = model.sd_constraints, model.objective
-    _model = set_objective(model, sd_objective(objective0, sd_constraints, c))
-    return _model
+    # Build the sub-model with the barrier objective and without the
+    # semidefinite constraints: the barrier encodes them, and stripping them
+    # prevents the sub-solver from warning about unsupported semidefinite
+    # constraints on every barrier iteration. A fresh VecModel is constructed
+    # because the sd_constraints field type is fixed at construction.
+    return VecModel(
+        Objective(sd_objective(objective0, sd_constraints, c)),
+        model.eq_constraints,
+        model.ineq_constraints,
+        VectorOfFunctions(()),
+        model.box_min,
+        model.box_max,
+        model.init,
+        model.integer,
+    )
 end
 
 function optimize!(workspace::SDPBarrierWorkspace)
@@ -215,7 +233,11 @@ function optimize!(workspace::SDPBarrierWorkspace)
         c = c .* _c_decr
         x = copy(minimizer_i)
     end
-    optimal_ind = argmin(first.(results))
+    optimal_ind =
+        argmin(eachindex(results)) do i
+            v = first(results[i])
+            return isfinite(v) ? v : Inf
+        end
     minimum, minimizer = results[optimal_ind]
     if keep_all
         return SDPBarrierResult(minimum, minimizer, results, optimal_ind)
