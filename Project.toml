@@ -23,9 +23,8 @@ julia = "1.10"
 [extras]
 ChainRulesTestUtils = "cdddcdb0-9152-4a09-a978-84456f9df70a"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
-DistributionsAD = "ced4e74d-a319-5a8a-b0ac-84af2272839c"
 NonconvexIpopt = "bf347577-a06d-49ad-a669-8c0e005493b8"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["ChainRulesTestUtils", "Distributions", "DistributionsAD", "NonconvexIpopt", "Test"]
+test = ["ChainRulesTestUtils", "Distributions", "NonconvexIpopt", "Test"]
