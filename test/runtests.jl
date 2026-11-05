@@ -34,7 +34,13 @@ end
 
     # Objective function
     function f((x_L, x_D))
-        -loglikelihood(MvNormal(μ, decompress_symmetric(x_L, x_D)), samples)
+        A = decompress_symmetric(x_L, x_D)
+        # Guard against Ipopt probing trial points that are not positive
+        # definite: the barrier handles PSD-ness, but the line search can
+        # still evaluate indefinite iterates, which makes `PDMat` throw.
+        F = cholesky(A, check = false)
+        issuccess(F) || return Inf
+        return -loglikelihood(MvNormal(μ, A), samples)
     end
 
     model = Model(f)
@@ -78,8 +84,13 @@ end
 
     # Objective function
     function f((x_L1, x_D1, x_L2, x_D2))
-        -loglikelihood(MvNormal(μ1, decompress_symmetric(x_L1, x_D1)), samples1) -
-        loglikelihood(MvNormal(μ2, decompress_symmetric(x_L2, x_D2)), samples2)
+        A1 = decompress_symmetric(x_L1, x_D1)
+        A2 = decompress_symmetric(x_L2, x_D2)
+        # Guard against Ipopt probing indefinite trial points (see above).
+        (issuccess(cholesky(A1, check = false)) &&
+         issuccess(cholesky(A2, check = false))) || return Inf
+        return -loglikelihood(MvNormal(μ1, A1), samples1) -
+               loglikelihood(MvNormal(μ2, A2), samples2)
     end
     model = Model(f)
 
@@ -139,7 +150,13 @@ end
     # Passing sd_constraint but not using SDPBarrierOptions
     # Objective function
     function f((x_L, x_D))
-        -loglikelihood(MvNormal(μ, decompress_symmetric(x_L, x_D)), samples)
+        A = decompress_symmetric(x_L, x_D)
+        # Guard against Ipopt probing trial points that are not positive
+        # definite: the barrier handles PSD-ness, but the line search can
+        # still evaluate indefinite iterates, which makes `PDMat` throw.
+        F = cholesky(A, check = false)
+        issuccess(F) || return Inf
+        return -loglikelihood(MvNormal(μ, A), samples)
     end
     model = Model(f)
 
