@@ -1,6 +1,9 @@
 module NonconvexSemidefinite
 
 export SDPBarrierOptions, SDPBarrierAlg, decompress_symmetric
+export project_psd, project_psd_neg, psd_infeasibility
+export symmetric_pattern, chordal_extension, aggregate_sparsity, chordal_decompose
+export PSDMatrixView, add_psd_variable!
 
 using ChainRulesCore, Reexport, Parameters
 @reexport using NonconvexCore
@@ -63,6 +66,10 @@ function ChainRulesCore.rrule(
     end
     return rearrange_x(x_L, x_D), pullback
 end
+
+include("projection.jl")
+include("chordal.jl")
+include("modeling.jl")
 
 """
     SDPBarrierAlg(sub_alg)

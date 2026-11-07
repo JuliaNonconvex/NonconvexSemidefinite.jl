@@ -1,6 +1,6 @@
 # Test cases of semidefinite programming
 using NonconvexSemidefinite, NonconvexIpopt, LinearAlgebra, Test
-using Distributions, ChainRulesTestUtils, Random, ChainRulesCore
+using Distributions, ChainRulesTestUtils, Random, ChainRulesCore, SparseArrays
 Random.seed!(1)
 
 # Test setting
@@ -210,4 +210,105 @@ end
     @test isempty(barrier_model.sd_constraints.fs)
     # The barrier objective still evaluates to a finite value.
     @test isfinite(barrier_model.objective(x0))
+@testset "PSD cone projections" begin
+    # rrule correctness in the identity region (all eigenvalues positive)
+    test_rrule(NonconvexSemidefinite.project_psd, randn(3, 3) + 2I)
+    # rrule correctness with mixed-sign eigenvalues away from zero
+    test_rrule(NonconvexSemidefinite.project_psd, diagm([-1.0, 1.0, 2.0]))
+    A = randn(3, 3)
+    A = A + A'
+    Z = project_psd(A)
+    @test Z ≈ Z'
+    @test all(eigvals(Symmetric(Z)) .>= -1e-8)
+    @test project_psd(Z) ≈ Z
+    # Moreau decomposition: A = Π_{S₊}(A) + Π_{S₋}(A) for symmetric A
+    @test project_psd(A) + project_psd_neg(A) ≈ A
+    @test psd_infeasibility(Z) ≈ 0 atol = 1e-8
+    @test psd_infeasibility(diagm([-2.0, 1.0])) ≈ 2 atol = 1e-8
+    # Zero cotangent does not throw
+    _, pb = ChainRulesCore.rrule(NonconvexSemidefinite.project_psd, A)
+    cotans = pb(ChainRulesCore.ZeroTangent())
+    @test cotans[1] isa ChainRulesCore.AbstractZero
+    @test cotans[2] isa ChainRulesCore.AbstractZero
+end
+
+@testset "Chordal decomposition" begin
+    # A path graph is already chordal; its maximal cliques are its edges.
+    Ppath = spdiagm(0 => ones(4), 1 => ones(3), -1 => ones(3)) .!= 0
+    cliques = chordal_extension(Ppath)
+    @test length(cliques) == 3
+    @test all(length(c) == 2 for c in cliques)
+    @test symmetric_pattern(Ppath) == Ppath
+    # Every edge of the pattern is covered by a clique.
+    for j in 1:4, k in nzrange(Ppath, j)
+        i = rowvals(Ppath)[k]
+        i == j && continue
+        @test any(c -> i in c && j in c, cliques)
+    end
+    # A 4-cycle needs one chord; the extension has two cliques of size 3.
+    Pcycle = sparse([1, 2, 2, 3, 3, 4, 4, 1], [2, 1, 3, 2, 4, 3, 1, 4], trues(8), 4, 4)
+    cliques4 = chordal_extension(Pcycle)
+    @test length(cliques4) == 2
+    @test all(length(c) == 3 for c in cliques4)
+    # Structural sparsity probing (diagonal pattern).
+    pat = aggregate_sparsity(x -> diagm(x), ones(3), 3)
+    @test Matrix(pat) == Matrix(I, 3, 3)
+    # chordal_decompose replaces one tridiagonal 4×4 PSD constraint with three
+    # 2×2 clique constraints, all PSD (Grone-Johnson-Sá-Wolkowicz equivalence).
+    P = [2.0 0.5 0.0 0.0; 0.5 2.0 0.5 0.0; 0.0 0.5 2.0 0.5; 0.0 0.0 0.5 2.0]
+    model = Model(x -> 0.0)
+    addvar!(model, -1.0, 1.0)
+    add_sd_constraint!(model, x -> P, 4)
+    vm, x0, _ = NonconvexCore.tovecmodel(model)
+    dm = chordal_decompose(vm, sparse(P .!= 0))
+    @test length(dm.sd_constraints.fs) == 3
+    for sd in dm.sd_constraints.fs
+        M = sd(x0)
+        @test size(M) == (2, 2)
+        @test minimum(eigvals(Symmetric(M))) > 0
+    end
+    # Auto-probed decomposition: the union of AD structure and value support
+    # recovers the tridiagonal structure → three 2×2 clique constraints.
+    dm_auto = chordal_decompose(vm; x0 = x0)
+    @test length(dm_auto.sd_constraints.fs) == 3
+    @test all(sd -> sd.dim == 2, dm_auto.sd_constraints.fs)
+    # A dense constant matrix has full value support → a single 4×4 clique.
+    Pdense = P + 0.1 * ones(4, 4)
+    modeld = Model(x -> 0.0)
+    addvar!(modeld, -1.0, 1.0)
+    add_sd_constraint!(modeld, x -> Pdense, 4)
+    vmd, x0d, _ = NonconvexCore.tovecmodel(modeld)
+    dmd = chordal_decompose(vmd; x0 = x0d)
+    @test length(dmd.sd_constraints.fs) == 1
+    @test dmd.sd_constraints.fs[1].dim == 4
+    # A user pattern that misses a nonzero entry of P(x0) is rejected.
+    Pbad = copy(P)
+    Pbad[1, 3] = 0.1
+    Pbad[3, 1] = 0.1
+    modelbad = Model(x -> 0.0)
+    addvar!(modelbad, -1.0, 1.0)
+    add_sd_constraint!(modelbad, x -> Pbad, 4)
+    vmbad, x0bad, _ = NonconvexCore.tovecmodel(modelbad)
+    @test_throws ArgumentError chordal_decompose(vmbad, sparse(Ppath); x0 = x0bad)
+end
+
+@testset "PSD variable modeling conveniences" begin
+    model = Model()
+    M = add_psd_variable!(model, 3)
+    x0 = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    # x_L = [1, 2, 3], x_D = [4, 5, 6] in the (x_L, x_D) layout
+    @test M(x0) ≈ [4.0 1.0 2.0; 1.0 5.0 3.0; 2.0 3.0 6.0]
+    # Offset access when the PSD variable is not the first variable.
+    model2 = Model()
+    addvar!(model2, -1.0, 1.0)
+    M2 = add_psd_variable!(model2, 2)
+    xfull = [0.5, 1.0, 2.0, 3.0]
+    @test M2(xfull) ≈ [2.0 1.0; 1.0 3.0]
+    @test M2(xfull[2:4]) ≈ [2.0 1.0; 1.0 3.0]
+    # VecModel support (via the public tovecmodel path)
+    m = Model()
+    addvar!(m, -1.0, 1.0)
+    vm, _, _ = NonconvexCore.tovecmodel(m)
+    Mv = add_psd_variable!(vm, 2; init = Matrix{Float64}(I, 2, 2))
+    @test Mv(vm.init) ≈ Matrix{Float64}(I, 2, 2)
 end
