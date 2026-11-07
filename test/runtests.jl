@@ -190,3 +190,14 @@ end
         options = IpoptOptions(max_iter = 1, first_order = true),
     )
 end
+
+@testset "to_barrier removes semidefinite constraints" begin
+    model = Model(x -> sum(x .^ 2))
+    addvar!(model, fill(-2.0, 2), fill(2.0, 2))
+    add_sd_constraint!(model, x -> diagm([x[1]^2 + 1.0, x[2]^2 + 1.0]))
+    vm, x0, _ = NonconvexCore.tovecmodel(model)
+    barrier_model = NonconvexSemidefinite.to_barrier(vm, (1.0,))
+    @test isempty(barrier_model.sd_constraints.fs)
+    # The barrier objective still evaluates to a finite value.
+    @test isfinite(barrier_model.objective(x0))
+end
