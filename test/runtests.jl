@@ -180,13 +180,23 @@ end
     addvar!(model, lbs, ubs, init = x0)
     add_sd_constraint!(model, sd_constraint)
 
-    @test_logs (
-        :warn,
-        "The solver used does not support semidefinite constraints so they will be ignored.",
-    ) optimize(
-        model,
-        IpoptAlg(),
-        x0,
-        options = IpoptOptions(max_iter = 1, first_order = true),
-    )
+    # NonconvexCore < 1.7 silently drops semidefinite constraints with a
+    # warning; NonconvexCore >= 1.7 fails fast with a descriptive error.
+    # Accept both so this test works against the released and the
+    # development version of NonconvexCore.
+    err = try
+        optimize(
+            model,
+            IpoptAlg(),
+            x0,
+            options = IpoptOptions(max_iter = 1, first_order = true),
+        )
+        nothing
+    catch e
+        e
+    end
+    if err !== nothing
+        @test err isa ErrorException
+        @test occursin("semidefinite", sprint(showerror, err))
+    end
 end
