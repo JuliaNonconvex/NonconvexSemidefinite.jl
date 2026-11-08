@@ -196,7 +196,7 @@ end
         e
     end
     if err !== nothing
-        @test err isa ErrorException
+        @test err isa Union{ErrorException,ArgumentError}
         @test occursin("semidefinite", sprint(showerror, err))
     end
 end
@@ -311,4 +311,15 @@ end
     vm, _, _ = NonconvexCore.tovecmodel(m)
     Mv = add_psd_variable!(vm, 2; init = Matrix{Float64}(I, 2, 2))
     @test Mv(vm.init) ≈ Matrix{Float64}(I, 2, 2)
+end
+
+
+@testset "solver capabilities" begin
+    caps = solver_capabilities(SDPBarrierAlg(sub_alg = IpoptAlg()))
+    @test caps isa ConstraintCapabilities
+    @test caps.sd === true
+    @test caps.eq === true
+    @test caps.ineq === true
+    @test caps.box === true
+    @test caps.integer === false
 end

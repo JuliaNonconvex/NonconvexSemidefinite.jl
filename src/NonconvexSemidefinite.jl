@@ -83,6 +83,13 @@ function SDPBarrierAlg(; sub_alg)
     return SDPBarrierAlg(sub_alg)
 end
 
+# The barrier meta-algorithm transforms semidefinite constraints into barrier
+# terms of the subproblem; every other feature is forwarded to the sub-solver.
+function NonconvexCore.solver_capabilities(alg::SDPBarrierAlg)
+    sub = solver_capabilities(alg.sub_alg)
+    return merge_capabilities(sub; sd = true)
+end
+
 function _optimize_precheck(
     model::AbstractModel,
     optimizer::SDPBarrierAlg,
