@@ -322,4 +322,5 @@ end
     @test caps.ineq === true
     @test caps.box === true
     @test caps.integer === false
+    @test caps.infinite_bounds === true  # forwarded from IpoptAlg's declaration
 end
