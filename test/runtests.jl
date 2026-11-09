@@ -403,3 +403,47 @@ end
     @test rmix.minimizer[1] ≈ 2.0 rtol = 1e-3
     @test rmix.minimum ≈ -2.0 rtol = 1e-3
 end
+
+@testset "Quadratic re-parameterization" begin
+    # min (A[1,1] - 3)^2 + (A[2,2] - 4)^2 over PSD 2x2 matrices A: the
+    # optimum is diag(3, 4). Parameterize A = L Lᵀ (full rank) and
+    # A = R Rᵀ (rank 2).
+    function quad_problem()
+        m = Model(x -> begin
+            A = NonconvexSemidefinite.decompress_symmetric(
+                @view(x[1:1]),
+                @view(x[2:3]),
+            )
+            return (A[1, 1] - 3.0)^2 + (A[2, 2] - 4.0)^2
+        end)
+        addvar!(m, [-10.0, 0.0, 0.0], [10.0, 10.0, 10.0])
+        add_sd_constraint!(m, x -> NonconvexSemidefinite.decompress_symmetric(
+            @view(x[1:1]), @view(x[2:3]),
+        ), 2)
+        return m
+    end
+    m = quad_problem()
+    x0 = [0.0, 2.0, 3.0]
+    alg = SDPQuadAlg(sub_alg = IpoptAlg())
+    options = SDPQuadOptions(sub_options = IpoptOptions(max_iter = 200))
+    r = optimize(m, alg, x0, options = options)
+    A = NonconvexSemidefinite.decompress_symmetric(
+        @view(r.minimizer[1:1]), @view(r.minimizer[2:3]),
+    )
+    @test A[1, 1] ≈ 3.0 atol = 1e-3
+    @test A[2, 2] ≈ 4.0 atol = 1e-3
+    @test minimum(eigvals(Symmetric(A))) >= -1e-6
+
+    # low-rank (rank 2) Burer-Monteiro re-parameterization of the same problem
+    options_lr = SDPQuadOptions(sub_options = IpoptOptions(max_iter = 200), rank = 2)
+    r_lr = optimize(m, alg, x0, options = options_lr)
+    A_lr = NonconvexSemidefinite.decompress_symmetric(
+        @view(r_lr.minimizer[1:1]), @view(r_lr.minimizer[2:3]),
+    )
+    @test A_lr[1, 1] ≈ 3.0 atol = 1e-3
+    @test A_lr[2, 2] ≈ 4.0 atol = 1e-3
+
+    # capabilities
+    caps = solver_capabilities(SDPQuadAlg(sub_alg = IpoptAlg()))
+    @test caps.sd === true
+end

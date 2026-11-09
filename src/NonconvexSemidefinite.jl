@@ -2,6 +2,7 @@ module NonconvexSemidefinite
 
 export SDPBarrierOptions, SDPBarrierAlg, decompress_symmetric
 export BarrierAlg, BarrierOptions, BarrierSelection, BarrierResult
+export SDPQuadAlg, SDPQuadOptions, SDPQuadResult
 export project_psd, project_psd_neg, psd_infeasibility
 export symmetric_pattern, chordal_extension, aggregate_sparsity, chordal_decompose
 export PSDMatrixView, add_psd_variable!
@@ -9,7 +10,7 @@ export PSDMatrixView, add_psd_variable!
 using ChainRulesCore, Reexport, Parameters
 @reexport using NonconvexCore
 using NonconvexCore: VecModel, AbstractOptimizer, AbstractModel
-using NonconvexCore: VectorOfFunctions, SDConstraint, Objective
+using NonconvexCore: VectorOfFunctions, SDConstraint, Objective, EqConstraint, IneqConstraint
 import NonconvexCore: Workspace, optimize!, _optimize_precheck
 
 # Semidefinite programming
@@ -73,5 +74,6 @@ include("chordal.jl")
 include("modeling.jl")
 
 include("barrier.jl")
+include("reparam.jl")
 
 end
