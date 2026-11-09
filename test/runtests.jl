@@ -210,6 +210,8 @@ end
     @test isempty(barrier_model.sd_constraints.fs)
     # The barrier objective still evaluates to a finite value.
     @test isfinite(barrier_model.objective(x0))
+end
+
 @testset "PSD cone projections" begin
     # rrule correctness in the identity region (all eigenvalues positive)
     test_rrule(NonconvexSemidefinite.project_psd, randn(3, 3) + 2I)
@@ -323,4 +325,81 @@ end
     @test caps.box === true
     @test caps.integer === false
     @test caps.infinite_bounds === true  # forwarded from IpoptAlg's declaration
+end
+
+@testset "General barrier method" begin
+    # Inequality-constrained problem: min x[1]^2 + x[2]^2 s.t. 2 - x[1] - x[2] <= 0
+    # (the minimum on the feasible half-space is at x = [1, 1], value 2).
+    function ineq_problem()
+        m = Model(x -> sum(x .^ 2))
+        addvar!(m, [-5.0, -5.0], [5.0, 5.0])
+        add_ineq_constraint!(m, x -> 2 - x[1] - x[2])
+        x0 = [1.5, 1.5]   # strictly feasible interior point
+        return m, x0
+    end
+    m, x0 = ineq_problem()
+    # Keep the box native for Ipopt (barrier only the inequality).
+    alg = BarrierAlg(sub_alg = IpoptAlg())
+    options = BarrierOptions(
+        sub_options = IpoptOptions(max_iter = 100),
+        c_init = 1.0,
+        c_decr = 0.1,
+        n_iter = 15,
+        barrier = BarrierSelection(ineq = true, box = false, sd = false),
+    )
+    r = optimize(m, alg, x0, options = options)
+    @test r.minimizer ≈ [1.0, 1.0] rtol = 1e-3
+    @test r.minimum ≈ 2.0 rtol = 1e-3
+
+    # Bounds-only barrierification: min (x - 3)^2 s.t. x <= 2 (active at the
+    # optimum), from the strictly interior x0 = 0.
+    mb = Model(x -> (x[1] - 3.0)^2)
+    addvar!(mb, [-Inf], [2.0])
+    alg2 = BarrierAlg(sub_alg = IpoptAlg())
+    options2 = BarrierOptions(
+        sub_options = IpoptOptions(max_iter = 100),
+        n_iter = 12,
+        barrier = BarrierSelection(ineq = false, box = true, sd = false),
+    )
+    rb = optimize(mb, alg2, [0.0], options = options2)
+    @test rb.minimizer[1] ≈ 2.0 atol = 1e-3
+
+    # Adaptive schedule + duality-gap termination on the ineq problem.
+    options3 = BarrierOptions(
+        sub_options = IpoptOptions(max_iter = 100),
+        c_init = 1.0,
+        n_iter = 50,
+        adaptive = true,
+        tol = 1e-6,
+        barrier = BarrierSelection(ineq = true, box = false, sd = false),
+    )
+    r3 = optimize(m, alg, x0, options = options3)
+    @test r3.minimizer ≈ [1.0, 1.0] rtol = 1e-3
+
+    # Strict-feasibility validation errors.
+    mbad, _ = ineq_problem()
+    @test_throws ArgumentError optimize(
+        mbad,
+        alg,
+        [0.0, 0.0],   # violates 2 - x1 - x2 <= 0
+        options = options3,
+    )
+
+    # Barrierify everything: ineq + box + sd together, with sd kept feasible.
+    # min -x[1] s.t. x[1]^2 <= 4 (box-like ineq), 1 <= x[1] <= 3 (box), and a
+    # trivial 1x1 PSD constraint x[2] + 1 >= 0.
+    mmix = Model(x -> -x[1])
+    addvar!(mmix, [1.0, 1.0], [3.0, 3.0])
+    add_ineq_constraint!(mmix, x -> x[1]^2 - 4)
+    add_sd_constraint!(mmix, x -> [x[2] + 1.0;;])
+    algmix = BarrierAlg(sub_alg = IpoptAlg())
+    optionsmix = BarrierOptions(
+        sub_options = IpoptOptions(max_iter = 100),
+        n_iter = 15,
+        barrier = BarrierSelection(ineq = true, box = true, sd = true),
+    )
+    rmix = optimize(mmix, algmix, [1.5, 1.5], options = optionsmix)
+    # The feasible optimum is x[1] = 2 (ineq active), value -2.
+    @test rmix.minimizer[1] ≈ 2.0 rtol = 1e-3
+    @test rmix.minimum ≈ -2.0 rtol = 1e-3
 end
