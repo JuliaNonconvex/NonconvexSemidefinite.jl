@@ -1,0 +1,11 @@
+name = "Semidefinite"
+modules = ["NonconvexSemidefinite"]
+doctest_setup = "using NonconvexSemidefinite"
+
+[[pages]]
+title = "Semidefinite"
+file = "index.md"
+
+[[pages]]
+title = "Docstrings"
+file = "docstrings.md"
