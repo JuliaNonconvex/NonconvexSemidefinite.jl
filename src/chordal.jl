@@ -7,7 +7,7 @@
 # PSD constraint with many small PSD constraints on the cliques.
 
 using SparseArrays: SparseMatrixCSC, sparse, nzrange, rowvals, nonzeros
-import Zygote
+using Zygote: Zygote
 
 """
     symmetric_pattern(pattern::SparseMatrixCSC)
@@ -53,7 +53,7 @@ function chordal_extension(pattern::SparseMatrixCSC)
     for i in 1:n
         A[i, i] += n
     end
-    F = cholesky(A, check = false)
+    F = cholesky(A; check=false)
     L = sparse(F.L)
     cliques = Vector{Vector{Int}}()
     for j in 1:n
@@ -68,7 +68,7 @@ function chordal_extension(pattern::SparseMatrixCSC)
     # Map the clique vertices back to the original ordering. The cliques of
     # the chordal graph are given in the ordering used by the factorization.
     unpermuted = map(maxcliques) do C
-        sort!([F.p[i] for i in C])
+        return sort!([F.p[i] for i in C])
     end
     return unpermuted
 end
@@ -110,9 +110,7 @@ function aggregate_sparsity(f, x0::AbstractVector, dim::Int)
         Δx = Δx isa Tuple ? Δx[1] : Δx
         # `nothing`/AbstractZero cotangents mean the output entry does not
         # depend on the variables (e.g. constant terms).
-        if Δx !== nothing &&
-           !(Δx isa ChainRulesCore.AbstractZero) &&
-           any(!iszero, Δx)
+        if Δx !== nothing && !(Δx isa ChainRulesCore.AbstractZero) && any(!iszero, Δx)
             pattern[i, j] = true
         end
     end
@@ -137,7 +135,7 @@ If `x0` is provided, every nonzero entry of `P(x0)` must lie inside the
 pattern, otherwise an error is thrown: sparsity exploitation is only valid
 when the pattern covers all entries the constraint can have.
 """
-function chordal_decompose(model::VecModel, patterns; x0 = nothing)
+function chordal_decompose(model::VecModel, patterns; x0=nothing)
     n_sd = length(model.sd_constraints.fs)
     pats = patterns isa AbstractVector ? patterns : [patterns]
     length(pats) == n_sd || throw(
@@ -197,5 +195,5 @@ function chordal_decompose(model::VecModel, patterns; x0 = nothing)
     )
 end
 function chordal_decompose(model::VecModel; x0)
-    return chordal_decompose(model, [nothing for _ in model.sd_constraints.fs]; x0 = x0)
+    return chordal_decompose(model, [nothing for _ in model.sd_constraints.fs]; x0=x0)
 end

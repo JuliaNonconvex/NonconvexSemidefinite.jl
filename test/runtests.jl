@@ -10,9 +10,7 @@ n_sample = 300
 
 @testset "Test matrix to vectors function" begin
     test_rrule(
-        NonconvexSemidefinite.rearrange_x,
-        rand((mat_dim^2 - mat_dim) ÷ 2),
-        rand(mat_dim),
+        NonconvexSemidefinite.rearrange_x, rand((mat_dim^2 - mat_dim) ÷ 2), rand(mat_dim)
     )
 end
 
@@ -20,9 +18,7 @@ end
     # Regression test: the pullback used to call lowertriangind/diag on
     # AbstractZero cotangents, which threw MethodError.
     y, pb = ChainRulesCore.rrule(
-        NonconvexSemidefinite.rearrange_x,
-        [0.1, 0.2, 0.3],
-        [1.0, 2.0, 3.0],
+        NonconvexSemidefinite.rearrange_x, [0.1, 0.2, 0.3], [1.0, 2.0, 3.0]
     )
     cotans = pb((ChainRulesCore.ZeroTangent(), ChainRulesCore.ZeroTangent()))
     @test cotans[2] isa ChainRulesCore.AbstractZero
@@ -35,7 +31,7 @@ function random_psd_mat(mat_dim)
 end
 
 function sd_constraint((x_L, x_D))
-    decompress_symmetric(x_L, x_D)
+    return decompress_symmetric(x_L, x_D)
 end
 
 @testset "Single semi-definite constraint" begin
@@ -51,7 +47,7 @@ end
         # Guard against Ipopt probing trial points that are not positive
         # definite: the barrier handles PSD-ness, but the line search can
         # still evaluate indefinite iterates, which makes `PDMat` throw.
-        F = cholesky(A, check = false)
+        F = cholesky(A, check=false)
         issuccess(F) || return Inf
         return -loglikelihood(MvNormal(μ, A), samples)
     end
@@ -62,13 +58,13 @@ end
     x0 = [mat_x0[NonconvexSemidefinite.lowertriangind(mat_x0)], diag(mat_x0)]
     lbs = [fill(-Inf, length(x0[1])), zeros(length(x0[2]))]
     ubs = [fill(Inf, length(x0[1])), fill(Inf, length(x0[2]))]
-    addvar!(model, lbs, ubs, init = x0)
+    addvar!(model, lbs, ubs, init=x0, integer=falses(sum(length, lbs)))
 
     add_sd_constraint!(model, sd_constraint)
 
-    alg = SDPBarrierAlg(sub_alg = IpoptAlg())
-    options = SDPBarrierOptions(sub_options = IpoptOptions(max_iter = 200))
-    result = optimize(model, alg, x0, options = options)
+    alg = SDPBarrierAlg(sub_alg=IpoptAlg())
+    options = SDPBarrierOptions(sub_options=IpoptOptions(max_iter=200))
+    result = optimize(model, alg, x0, options=options)
 
     minimum, minimizer, optimal_ind = result.minimum, result.minimizer, result.optimal_ind
     _Σ = sd_constraint(minimizer)
@@ -100,8 +96,8 @@ end
         A1 = decompress_symmetric(x_L1, x_D1)
         A2 = decompress_symmetric(x_L2, x_D2)
         # Guard against Ipopt probing indefinite trial points (see above).
-        (issuccess(cholesky(A1, check = false)) &&
-         issuccess(cholesky(A2, check = false))) || return Inf
+        (issuccess(cholesky(A1, check=false)) && issuccess(cholesky(A2, check=false))) ||
+            return Inf
         return -loglikelihood(MvNormal(μ1, A1), samples1) -
                loglikelihood(MvNormal(μ2, A2), samples2)
     end
@@ -117,19 +113,19 @@ end
     ubs = [fill(Inf, length(x0[1])), fill(Inf, length(x0[2]))]
     ubs = [copy.(ubs)..., copy.(ubs)...]
 
-    addvar!(model, lbs, ubs, init = x0)
+    addvar!(model, lbs, ubs, init=x0, integer=falses(sum(length, lbs)))
 
     add_sd_constraint!(model, x -> sd_constraint(x[1:2]))
     add_sd_constraint!(model, x -> sd_constraint(x[3:4]))
 
-    alg = SDPBarrierAlg(sub_alg = IpoptAlg())
+    alg = SDPBarrierAlg(sub_alg=IpoptAlg())
     options = SDPBarrierOptions(
-        sub_options = IpoptOptions(max_iter = 200),
-        keep_all = false,
-        c_init = [1.5, 2.0],
-        c_decr = [0.2, 0.1],
+        sub_options=IpoptOptions(max_iter=200),
+        keep_all=false,
+        c_init=[1.5, 2.0],
+        c_decr=[0.2, 0.1],
     )
-    result = optimize(model, alg, x0, options = options)
+    result = optimize(model, alg, x0, options=options)
 
     minimum, minimizer, optimal_ind = result.minimum, result.minimizer, result.optimal_ind
     _Σ1 = sd_constraint(minimizer[1:2])
@@ -167,7 +163,7 @@ end
         # Guard against Ipopt probing trial points that are not positive
         # definite: the barrier handles PSD-ness, but the line search can
         # still evaluate indefinite iterates, which makes `PDMat` throw.
-        F = cholesky(A, check = false)
+        F = cholesky(A, check=false)
         issuccess(F) || return Inf
         return -loglikelihood(MvNormal(μ, A), samples)
     end
@@ -177,7 +173,7 @@ end
     x0 = [mat_x0[NonconvexSemidefinite.lowertriangind(mat_x0)], diag(mat_x0)]
     lbs = [fill(-Inf, length(x0[1])), zeros(length(x0[2]))]
     ubs = [fill(Inf, length(x0[1])), fill(Inf, length(x0[2]))]
-    addvar!(model, lbs, ubs, init = x0)
+    addvar!(model, lbs, ubs, init=x0, integer=falses(sum(length, lbs)))
     add_sd_constraint!(model, sd_constraint)
 
     # NonconvexCore < 1.7 silently drops semidefinite constraints with a
@@ -185,12 +181,7 @@ end
     # Accept both so this test works against the released and the
     # development version of NonconvexCore.
     err = try
-        optimize(
-            model,
-            IpoptAlg(),
-            x0,
-            options = IpoptOptions(max_iter = 1, first_order = true),
-        )
+        optimize(model, IpoptAlg(), x0, options=IpoptOptions(max_iter=1, first_order=true))
         nothing
     catch e
         e
@@ -271,7 +262,7 @@ end
     end
     # Auto-probed decomposition: the union of AD structure and value support
     # recovers the tridiagonal structure → three 2×2 clique constraints.
-    dm_auto = chordal_decompose(vm; x0 = x0)
+    dm_auto = chordal_decompose(vm; x0=x0)
     @test length(dm_auto.sd_constraints.fs) == 3
     @test all(sd -> sd.dim == 2, dm_auto.sd_constraints.fs)
     # A dense constant matrix has full value support → a single 4×4 clique.
@@ -280,7 +271,7 @@ end
     addvar!(modeld, -1.0, 1.0)
     add_sd_constraint!(modeld, x -> Pdense, 4)
     vmd, x0d, _ = NonconvexCore.tovecmodel(modeld)
-    dmd = chordal_decompose(vmd; x0 = x0d)
+    dmd = chordal_decompose(vmd; x0=x0d)
     @test length(dmd.sd_constraints.fs) == 1
     @test dmd.sd_constraints.fs[1].dim == 4
     # A user pattern that misses a nonzero entry of P(x0) is rejected.
@@ -291,7 +282,7 @@ end
     addvar!(modelbad, -1.0, 1.0)
     add_sd_constraint!(modelbad, x -> Pbad, 4)
     vmbad, x0bad, _ = NonconvexCore.tovecmodel(modelbad)
-    @test_throws ArgumentError chordal_decompose(vmbad, sparse(Ppath); x0 = x0bad)
+    @test_throws ArgumentError chordal_decompose(vmbad, sparse(Ppath); x0=x0bad)
 end
 
 @testset "PSD variable modeling conveniences" begin
@@ -311,17 +302,19 @@ end
     m = Model()
     addvar!(m, -1.0, 1.0)
     vm, _, _ = NonconvexCore.tovecmodel(m)
-    Mv = add_psd_variable!(vm, 2; init = Matrix{Float64}(I, 2, 2))
+    Mv = add_psd_variable!(vm, 2; init=Matrix{Float64}(I, 2, 2))
     @test Mv(vm.init) ≈ Matrix{Float64}(I, 2, 2)
 end
 
-
 @testset "solver capabilities" begin
-    caps = solver_capabilities(SDPBarrierAlg(sub_alg = IpoptAlg()))
+    caps = solver_capabilities(SDPBarrierAlg(sub_alg=IpoptAlg()))
     @test caps isa ConstraintCapabilities
-    @test caps.sd === true
-    @test caps.eq === true
-    @test caps.ineq === true
+    @test caps.linear_sd === true
+    @test caps.nonlinear_sd === true
+    @test caps.linear_eq === true
+    @test caps.nonlinear_eq === true
+    @test caps.linear_ineq === true
+    @test caps.nonlinear_ineq === true
     @test caps.box === true
     @test caps.integer === false
     @test caps.infinite_bounds === true  # forwarded from IpoptAlg's declaration
@@ -339,15 +332,15 @@ end
     end
     m, x0 = ineq_problem()
     # Keep the box native for Ipopt (barrier only the inequality).
-    alg = BarrierAlg(sub_alg = IpoptAlg())
+    alg = BarrierAlg(sub_alg=IpoptAlg())
     options = BarrierOptions(
-        sub_options = IpoptOptions(max_iter = 100),
-        c_init = 1.0,
-        c_decr = 0.1,
-        n_iter = 15,
-        barrier = BarrierSelection(ineq = true, box = false, sd = false),
+        sub_options=IpoptOptions(max_iter=100),
+        c_init=1.0,
+        c_decr=0.1,
+        n_iter=15,
+        barrier=BarrierSelection(ineq=true, box=false, sd=false),
     )
-    r = optimize(m, alg, x0, options = options)
+    r = optimize(m, alg, x0, options=options)
     @test r.minimizer ≈ [1.0, 1.0] rtol = 1e-3
     @test r.minimum ≈ 2.0 rtol = 1e-3
 
@@ -355,25 +348,25 @@ end
     # optimum), from the strictly interior x0 = 0.
     mb = Model(x -> (x[1] - 3.0)^2)
     addvar!(mb, [-Inf], [2.0])
-    alg2 = BarrierAlg(sub_alg = IpoptAlg())
+    alg2 = BarrierAlg(sub_alg=IpoptAlg())
     options2 = BarrierOptions(
-        sub_options = IpoptOptions(max_iter = 100),
-        n_iter = 12,
-        barrier = BarrierSelection(ineq = false, box = true, sd = false),
+        sub_options=IpoptOptions(max_iter=100),
+        n_iter=12,
+        barrier=BarrierSelection(ineq=false, box=true, sd=false),
     )
-    rb = optimize(mb, alg2, [0.0], options = options2)
+    rb = optimize(mb, alg2, [0.0], options=options2)
     @test rb.minimizer[1] ≈ 2.0 atol = 1e-3
 
     # Adaptive schedule + duality-gap termination on the ineq problem.
     options3 = BarrierOptions(
-        sub_options = IpoptOptions(max_iter = 100),
-        c_init = 1.0,
-        n_iter = 50,
-        adaptive = true,
-        tol = 1e-6,
-        barrier = BarrierSelection(ineq = true, box = false, sd = false),
+        sub_options=IpoptOptions(max_iter=100),
+        c_init=1.0,
+        n_iter=50,
+        adaptive=true,
+        tol=1e-6,
+        barrier=BarrierSelection(ineq=true, box=false, sd=false),
     )
-    r3 = optimize(m, alg, x0, options = options3)
+    r3 = optimize(m, alg, x0, options=options3)
     @test r3.minimizer ≈ [1.0, 1.0] rtol = 1e-3
 
     # Strict-feasibility validation errors.
@@ -382,7 +375,7 @@ end
         mbad,
         alg,
         [0.0, 0.0],   # violates 2 - x1 - x2 <= 0
-        options = options3,
+        options=options3,
     )
 
     # Barrierify everything: ineq + box + sd together, with sd kept feasible.
@@ -392,13 +385,13 @@ end
     addvar!(mmix, [1.0, 1.0], [3.0, 3.0])
     add_ineq_constraint!(mmix, x -> x[1]^2 - 4)
     add_sd_constraint!(mmix, x -> [x[2] + 1.0;;])
-    algmix = BarrierAlg(sub_alg = IpoptAlg())
+    algmix = BarrierAlg(sub_alg=IpoptAlg())
     optionsmix = BarrierOptions(
-        sub_options = IpoptOptions(max_iter = 100),
-        n_iter = 15,
-        barrier = BarrierSelection(ineq = true, box = true, sd = true),
+        sub_options=IpoptOptions(max_iter=100),
+        n_iter=15,
+        barrier=BarrierSelection(ineq=true, box=true, sd=true),
     )
-    rmix = optimize(mmix, algmix, [1.5, 1.5], options = optionsmix)
+    rmix = optimize(mmix, algmix, [1.5, 1.5], options=optionsmix)
     # The feasible optimum is x[1] = 2 (ineq active), value -2.
     @test rmix.minimizer[1] ≈ 2.0 rtol = 1e-3
     @test rmix.minimum ≈ -2.0 rtol = 1e-3
@@ -409,41 +402,45 @@ end
     # optimum is diag(3, 4). Parameterize A = L Lᵀ (full rank) and
     # A = R Rᵀ (rank 2).
     function quad_problem()
-        m = Model(x -> begin
-            A = NonconvexSemidefinite.decompress_symmetric(
-                @view(x[1:1]),
-                @view(x[2:3]),
-            )
-            return (A[1, 1] - 3.0)^2 + (A[2, 2] - 4.0)^2
-        end)
+        m = Model(
+            x -> begin
+                A = NonconvexSemidefinite.decompress_symmetric(@view(x[1:1]), @view(x[2:3]))
+                return (A[1, 1] - 3.0)^2 + (A[2, 2] - 4.0)^2
+            end,
+        )
         addvar!(m, [-10.0, 0.0, 0.0], [10.0, 10.0, 10.0])
-        add_sd_constraint!(m, x -> NonconvexSemidefinite.decompress_symmetric(
-            @view(x[1:1]), @view(x[2:3]),
-        ), 2)
+        add_sd_constraint!(
+            m,
+            x -> NonconvexSemidefinite.decompress_symmetric(@view(x[1:1]), @view(x[2:3])),
+            2,
+        )
         return m
     end
     m = quad_problem()
     x0 = [0.0, 2.0, 3.0]
-    alg = SDPQuadAlg(sub_alg = IpoptAlg())
-    options = SDPQuadOptions(sub_options = IpoptOptions(max_iter = 200))
-    r = optimize(m, alg, x0, options = options)
+    alg = SDPQuadAlg(sub_alg=IpoptAlg())
+    options = SDPQuadOptions(sub_options=IpoptOptions(max_iter=200))
+    r = optimize(m, alg, x0, options=options)
     A = NonconvexSemidefinite.decompress_symmetric(
-        @view(r.minimizer[1:1]), @view(r.minimizer[2:3]),
+        @view(r.minimizer[1:1]), @view(r.minimizer[2:3])
     )
     @test A[1, 1] ≈ 3.0 atol = 1e-3
     @test A[2, 2] ≈ 4.0 atol = 1e-3
     @test minimum(eigvals(Symmetric(A))) >= -1e-6
 
     # low-rank (rank 2) Burer-Monteiro re-parameterization of the same problem
-    options_lr = SDPQuadOptions(sub_options = IpoptOptions(max_iter = 200), rank = 2)
-    r_lr = optimize(m, alg, x0, options = options_lr)
+    options_lr = SDPQuadOptions(sub_options=IpoptOptions(max_iter=200), rank=2)
+    r_lr = optimize(m, alg, x0, options=options_lr)
     A_lr = NonconvexSemidefinite.decompress_symmetric(
-        @view(r_lr.minimizer[1:1]), @view(r_lr.minimizer[2:3]),
+        @view(r_lr.minimizer[1:1]), @view(r_lr.minimizer[2:3])
     )
     @test A_lr[1, 1] ≈ 3.0 atol = 1e-3
     @test A_lr[2, 2] ≈ 4.0 atol = 1e-3
 
     # capabilities
-    caps = solver_capabilities(SDPQuadAlg(sub_alg = IpoptAlg()))
-    @test caps.sd === true
+    caps = solver_capabilities(SDPQuadAlg(sub_alg=IpoptAlg()))
+    @test caps.linear_sd === true
+    @test caps.nonlinear_sd === true
 end
+
+include("aqua.jl")

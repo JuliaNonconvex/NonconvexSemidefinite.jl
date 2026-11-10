@@ -20,7 +20,7 @@ mutable struct SDPQuadOptions{SO}
     rank::Union{Nothing,Int}
     diag_floor::Real
 end
-function SDPQuadOptions(; sub_options, rank = nothing, diag_floor = 1e-6)
+function SDPQuadOptions(; sub_options, rank=nothing, diag_floor=1e-6)
     (rank === nothing || rank >= 1) ||
         throw(ArgumentError("rank must be nothing (full rank) or a positive integer"))
     diag_floor >= 0 || throw(ArgumentError("diag_floor must be non-negative"))
@@ -45,16 +45,11 @@ end
 
 function NonconvexCore.solver_capabilities(alg::SDPQuadAlg)
     sub = solver_capabilities(alg.sub_alg)
-    return merge_capabilities(sub; sd = true)
+    return merge_capabilities(sub; linear_sd=true, nonlinear_sd=true)
 end
 
-function _optimize_precheck(
-    model::AbstractModel,
-    optimizer::SDPQuadAlg,
-    args...;
-    kwargs...,
-)
-    nothing
+function _optimize_precheck(model::AbstractModel, optimizer::SDPQuadAlg, args...; kwargs...)
+    return nothing
 end
 
 struct SDPQuadResult{M1,M2}
@@ -63,10 +58,7 @@ struct SDPQuadResult{M1,M2}
 end
 
 mutable struct SDPQuadWorkspace{
-    M<:VecModel,
-    X<:AbstractVector,
-    O<:SDPQuadOptions,
-    S<:AbstractOptimizer,
+    M<:VecModel,X<:AbstractVector,O<:SDPQuadOptions,S<:AbstractOptimizer
 } <: Workspace
     model::M
     x0::X
@@ -106,14 +98,18 @@ end
 # lower chunk index of (i, j) is column-major: (j-1)*n - (j-1)j/2 + (i-j).
 function _cholesky_param(chunk, n, k)
     return [
-        i > j ? chunk[(j-1)*n - (j-1)*j÷2 + (i-j)] :
-        i == j ? chunk[k+i] : zero(eltype(chunk))
-        for i in 1:n, j in 1:n
+        if i > j
+            chunk[(j - 1) * n - (j - 1) * j ÷ 2 + (i - j)]
+        elseif i == j
+            chunk[k + i]
+        else
+            zero(eltype(chunk))
+        end for i in 1:n, j in 1:n
     ]
 end
 
 function _unpack_lowrank(chunk, n, r)
-    return reshape(@view(chunk[1:n*r]), n, r)
+    return reshape(@view(chunk[1:(n * r)]), n, r)
 end
 
 function _factor_link(layouts, rank, nvars_new)
@@ -127,18 +123,16 @@ function _factor_link(layouts, rank, nvars_new)
             (
                 begin
                     if rank === nothing
-                        L = _cholesky_param(@view(fx[offset+1:offset+k+n]), n, k)
+                        L = _cholesky_param(@view(fx[(offset + 1):(offset + k + n)]), n, k)
                         A = L * L'
                     else
-                        R = _unpack_lowrank(@view(fx[offset+1:offset+n*rank]), n, rank)
+                        R = _unpack_lowrank(
+                            @view(fx[(offset + 1):(offset + n * rank)]), n, rank
+                        )
                         A = R * R'
                     end
-                    vcat(
-                        [A[lin] for lin in lowertriangind(A)],
-                        [A[i, i] for i in 1:n],
-                    )
-                end
-                for (offset, k, n) in layouts
+                    vcat([A[lin] for lin in lowertriangind(A)], [A[i, i] for i in 1:n])
+                end for (offset, k, n) in layouts
             ),
         )
     end
@@ -154,12 +148,12 @@ function _initial_factors(model::VecModel, layouts, rank, diag_floor)
     for (offset, k, n) in layouts
         A0 = Symmetric(
             decompress_symmetric(
-                @view(model.init[offset+1:offset+k]),
-                @view(model.init[offset+k+1:offset+k+n]),
+                @view(model.init[(offset + 1):(offset + k)]),
+                @view(model.init[(offset + k + 1):(offset + k + n)]),
             ),
         )
         if rank === nothing
-            F = cholesky(Matrix(A0) + 1e-6 * I, check = false)
+            F = cholesky(Matrix(A0) + 1e-6 * I; check=false)
             L = issuccess(F) ? F.L : Matrix(1e-3 * I, n, n)
             chunk = [L[lowertriangind(L)]; diag(L)]
             chunk[k .+ (1:n)] .= max.(diag(L), diag_floor)
@@ -196,12 +190,7 @@ function _wrap(f, link)
 end
 
 function Workspace(
-    model::VecModel,
-    optimizer::SDPQuadAlg,
-    x0,
-    args...;
-    options::SDPQuadOptions,
-    kwargs...,
+    model::VecModel, optimizer::SDPQuadAlg, x0, args...; options::SDPQuadOptions, kwargs...
 )
     return SDPQuadWorkspace(model, copy(x0), options, optimizer.sub_alg)
 end
@@ -214,12 +203,14 @@ function optimize!(workspace::SDPQuadWorkspace)
     link = _factor_link(layouts, rank, nvars_new)
     # build the factor-space sub-model: no semidefinite constraints
     obj = _wrap(model.objective, link)
-    eq = VectorOfFunctions(
-        [EqConstraint(_wrap(c.f, link), c.rhs, c.dim, c.flags) for c in model.eq_constraints.fs],
-    )
-    ineq = VectorOfFunctions(
-        [IneqConstraint(_wrap(c.f, link), c.rhs, c.dim, c.flags) for c in model.ineq_constraints.fs],
-    )
+    eq = VectorOfFunctions([
+        EqConstraint(_wrap(c.f, link), c.rhs, c.dim, c.flags) for
+        c in model.eq_constraints.fs
+    ],)
+    ineq = VectorOfFunctions([
+        IneqConstraint(_wrap(c.f, link), c.rhs, c.dim, c.flags) for
+        c in model.ineq_constraints.fs
+    ],)
     lbs, ubs = _factor_bounds(layouts, rank, diag_floor)
     fx0 = _initial_factors(model, layouts, rank, diag_floor)
     submodel = VecModel(
@@ -232,12 +223,8 @@ function optimize!(workspace::SDPQuadWorkspace)
         copy(fx0),
         falses(length(fx0)),
     )
-    checksubproblem!(
-        submodel,
-        sub_alg;
-        context = "the re-parameterized subproblem",
-    )
-    result_i = optimize(submodel, sub_alg, fx0, options = options.sub_options)
+    checksubproblem!(submodel, sub_alg; context="the re-parameterized subproblem")
+    result_i = optimize(submodel, sub_alg, fx0; options=options.sub_options)
     minimizer = link(result_i.minimizer)
     return SDPQuadResult(model.objective(minimizer), minimizer)
 end

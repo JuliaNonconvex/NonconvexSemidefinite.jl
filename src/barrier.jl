@@ -23,17 +23,19 @@ struct BarrierSelection
     box::Bool
     sd::Union{Bool,AbstractVector{Int}}
 end
-function BarrierSelection(; ineq = false, box = false, sd = true)
+function BarrierSelection(; ineq=false, box=false, sd=true)
     return BarrierSelection(ineq, box, sd)
 end
 
 _selected(sel::Bool, n::Int) = sel ? collect(1:n) : Int[]
 _selected(sel::AbstractVector{Int}, n::Int) = sel
-_selected(sel, n::Int) = throw(
-    ArgumentError(
-        "Barrier selection entries must be `true`, `false` or a vector of constraint indices; got $(typeof(sel)).",
-    ),
-)
+function _selected(sel, n::Int)
+    return throw(
+        ArgumentError(
+            "Barrier selection entries must be `true`, `false` or a vector of constraint indices; got $(typeof(sel)).",
+        ),
+    )
+end
 
 """
     BarrierAlg(sub_alg)
@@ -57,16 +59,18 @@ const SDPBarrierAlg = BarrierAlg
 # equality constraints are forwarded to the sub-solver.
 function NonconvexCore.solver_capabilities(alg::BarrierAlg)
     sub = solver_capabilities(alg.sub_alg)
-    return merge_capabilities(sub; ineq = true, box = true, sd = true)
+    return merge_capabilities(
+        sub;
+        linear_ineq=true,
+        nonlinear_ineq=true,
+        linear_sd=true,
+        nonlinear_sd=true,
+        box=true,
+    )
 end
 
-function _optimize_precheck(
-    model::AbstractModel,
-    optimizer::BarrierAlg,
-    args...;
-    kwargs...,
-)
-    nothing
+function _optimize_precheck(model::AbstractModel, optimizer::BarrierAlg, args...; kwargs...)
+    return nothing
 end
 
 """
@@ -91,9 +95,7 @@ The keyword arguments which can be specified are:
   this value.
 """
 mutable struct BarrierOptions{
-    C1<:Union{Real,AbstractArray},
-    C2<:Union{Real,AbstractArray},
-    SO,
+    C1<:Union{Real,AbstractArray},C2<:Union{Real,AbstractArray},SO
 }
     c_init::C1
     c_decr::C2
@@ -104,41 +106,27 @@ mutable struct BarrierOptions{
     adaptive::Bool
     tol::Union{Nothing,Real}
 end
-function BarrierOptions(c_init, c_decr, n_iter; sub_options, keep_all = false)
+function BarrierOptions(c_init, c_decr, n_iter; sub_options, keep_all=false)
     @assert all(0 .< c_decr .< 1) "c_decr should be between 0 and 1. "
     @assert all(c_init .> 0) "c_init should be larger than 0. "
     return BarrierOptions(
-        c_init,
-        c_decr,
-        n_iter,
-        sub_options,
-        keep_all,
-        BarrierSelection(),
-        false,
-        nothing,
+        c_init, c_decr, n_iter, sub_options, keep_all, BarrierSelection(), false, nothing
     )
 end
 function BarrierOptions(;
     sub_options,
-    c_init = 1.0,
-    c_decr = 0.1,
-    n_iter = 20,
-    keep_all = false,
-    barrier = BarrierSelection(),
-    adaptive = false,
-    tol = nothing,
+    c_init=1.0,
+    c_decr=0.1,
+    n_iter=20,
+    keep_all=false,
+    barrier=BarrierSelection(),
+    adaptive=false,
+    tol=nothing,
 )
     @assert all(0 .< c_decr .< 1) "c_decr should be between 0 and 1. "
     @assert all(c_init .> 0) "c_init should be larger than 0. "
     return BarrierOptions(
-        c_init,
-        c_decr,
-        n_iter,
-        sub_options,
-        keep_all,
-        barrier,
-        adaptive,
-        tol,
+        c_init, c_decr, n_iter, sub_options, keep_all, barrier, adaptive, tol
     )
 end
 
@@ -154,10 +142,7 @@ end
 const BarrierResult = SDPBarrierResult
 
 struct BarrierWorkspace{
-    M<:VecModel,
-    X<:AbstractVector,
-    O<:BarrierOptions,
-    S<:AbstractOptimizer,
+    M<:VecModel,X<:AbstractVector,O<:BarrierOptions,S<:AbstractOptimizer
 } <: Workspace
     model::M
     x0::X
@@ -166,14 +151,7 @@ struct BarrierWorkspace{
 end
 const SDPBarrierWorkspace = BarrierWorkspace
 
-function Workspace(
-    model::VecModel,
-    optimizer::BarrierAlg,
-    x0,
-    args...;
-    options,
-    kwargs...,
-)
+function Workspace(model::VecModel, optimizer::BarrierAlg, x0, args...; options, kwargs...)
     @unpack c_init, c_decr, barrier = options
     # Strict feasibility of the barrierified constraints at the initial point.
     for i in _selected(barrier.ineq, length(model.ineq_constraints.fs))
@@ -221,9 +199,10 @@ function Workspace(
             )
         end
     end
-    nunits = length(_selected(barrier.ineq, length(model.ineq_constraints.fs))) +
-             (barrier.box ? 1 : 0) +
-             length(_selected(barrier.sd, length(model.sd_constraints.fs)))
+    nunits =
+        length(_selected(barrier.ineq, length(model.ineq_constraints.fs))) +
+        (barrier.box ? 1 : 0) +
+        length(_selected(barrier.sd, length(model.sd_constraints.fs)))
     for (name, val) in (("c_init", c_init), ("c_decr", c_decr))
         if val isa AbstractArray
             @assert length(val) == nunits "$name should have one entry per barrierified constraint group ($nunits), got $(length(val))."
@@ -233,7 +212,7 @@ function Workspace(
 end
 
 function safe_logdet(A::AbstractMatrix)
-    c = cholesky(A, check = false)
+    c = cholesky(A; check=false)
     if issuccess(c)
         return logdet(c)
     else
@@ -309,20 +288,18 @@ the historical `SDPBarrierAlg` behaviour (semidefinite constraints only).
 function to_barrier(
     model::VecModel,
     c::Tuple;
-    selection = BarrierSelection(ineq = false, box = false, sd = true),
-    ε = 1e-6,
+    selection=BarrierSelection(; ineq=false, box=false, sd=true),
+    ε=1e-6,
 )
     ineq_sel, sd_sel, _ = _barrier_units(model, selection)
-    kept_ineq = VectorOfFunctions(
-        [cons for (i, cons) in enumerate(model.ineq_constraints.fs) if !(i in ineq_sel)],
-    )
-    kept_sd = VectorOfFunctions(
-        [cons for (i, cons) in enumerate(model.sd_constraints.fs) if !(i in sd_sel)],
-    )
+    kept_ineq = VectorOfFunctions([
+        cons for (i, cons) in enumerate(model.ineq_constraints.fs) if !(i in ineq_sel)
+    ],)
+    kept_sd = VectorOfFunctions([
+        cons for (i, cons) in enumerate(model.sd_constraints.fs) if !(i in sd_sel)
+    ],)
     return VecModel(
-        Objective(
-            _barrier_objective(model.objective, model, c, selection, ε),
-        ),
+        Objective(_barrier_objective(model.objective, model, c, selection, ε)),
         model.eq_constraints,
         kept_ineq,
         kept_sd,
@@ -348,31 +325,34 @@ function optimize!(workspace::BarrierWorkspace)
     @unpack model, x0, options, sub_alg = workspace
     @unpack c_init, c_decr, n_iter, sub_options, keep_all = options
     @unpack barrier, adaptive, tol = options
-    _c_decr = c_decr isa Real ? ntuple(_ -> c_decr, length(_barrier_units(model, barrier)[3])) : Tuple(c_decr)
+    _c_decr = if c_decr isa Real
+        ntuple(_ -> c_decr, length(_barrier_units(model, barrier)[3]))
+    else
+        Tuple(c_decr)
+    end
     ineq_sel, sd_sel, ms = _barrier_units(model, barrier)
     objective0 = model.objective
     x = copy(x0)
     obj0 = objective0(x)
     c = c_init isa Real ? ntuple(_ -> c_init, length(ms)) : Tuple(c_init)
-    results = Tuple{typeof(obj0), typeof(x)}[]
-    for k = 1:n_iter
+    results = Tuple{typeof(obj0),typeof(x)}[]
+    for k in 1:n_iter
         gap = dot(c, ms)
         tol !== nothing && gap <= tol && break
         # The smooth-extension region must shrink with the barrier
         # coefficient, otherwise infeasible points leak through at small c.
         ε = clamp(Base.minimum(c) / 10, 1e-9, 1e-4)
-        model_i = to_barrier(model, c; selection = barrier, ε = ε)
-        result_i = optimize(model_i, sub_alg, x, options = sub_options)
+        model_i = to_barrier(model, c; selection=barrier, ε=ε)
+        result_i = optimize(model_i, sub_alg, x; options=sub_options)
         minimizer_i = result_i.minimizer
         push!(results, (objective0(minimizer_i), minimizer_i))
         c = _next_c(c, ms, tol === nothing ? 0.0 : tol, k, n_iter, _c_decr, adaptive)
         x = copy(minimizer_i)
     end
-    optimal_ind =
-        argmin(eachindex(results)) do i
-            v = first(results[i])
-            return isfinite(v) ? v : Inf
-        end
+    optimal_ind = argmin(eachindex(results)) do i
+        v = first(results[i])
+        return isfinite(v) ? v : Inf
+    end
     minimum, minimizer = results[optimal_ind]
     if keep_all
         return SDPBarrierResult(minimum, minimizer, results, optimal_ind)

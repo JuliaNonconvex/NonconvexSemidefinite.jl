@@ -10,7 +10,8 @@ export PSDMatrixView, add_psd_variable!
 using ChainRulesCore, Reexport, Parameters
 @reexport using NonconvexCore
 using NonconvexCore: VecModel, AbstractOptimizer, AbstractModel
-using NonconvexCore: VectorOfFunctions, SDConstraint, Objective, EqConstraint, IneqConstraint
+using NonconvexCore:
+    VectorOfFunctions, SDConstraint, Objective, EqConstraint, IneqConstraint
 import NonconvexCore: Workspace, optimize!, _optimize_precheck
 
 # Semidefinite programming
@@ -30,7 +31,7 @@ function rearrange_x(x_L::AbstractVector, x_D::AbstractVector)
 end
 
 function decompress_symmetric(L::Matrix, D::Matrix)
-    Symmetric(L + D + L')
+    return Symmetric(L + D + L')
 end
 
 """
@@ -54,9 +55,7 @@ function decompress_symmetric(x_L::AbstractArray, x_D::AbstractArray)
 end
 
 function ChainRulesCore.rrule(
-    ::typeof(rearrange_x),
-    x_L::AbstractVector,
-    x_D::AbstractVector,
+    ::typeof(rearrange_x), x_L::AbstractVector, x_D::AbstractVector
 )
     function pullback((ΔL, ΔD))
         if ΔL isa ChainRulesCore.AbstractZero || ΔD isa ChainRulesCore.AbstractZero

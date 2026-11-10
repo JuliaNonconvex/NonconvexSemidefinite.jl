@@ -28,7 +28,7 @@ function (m::PSDMatrixView)(x::AbstractVector)
     chunk = if length(x) == m.nvars
         x
     elseif length(x) >= m.offset + m.nvars
-        @view x[m.offset+1:m.offset+m.nvars]
+        @view x[(m.offset + 1):(m.offset + m.nvars)]
     else
         throw(
             ArgumentError(
@@ -39,15 +39,13 @@ function (m::PSDMatrixView)(x::AbstractVector)
         )
     end
     x_L = @view chunk[1:k]
-    x_D = @view chunk[k+1:k+m.dim]
+    x_D = @view chunk[(k + 1):(k + m.dim)]
     return decompress_symmetric(x_L, x_D)
 end
 
 function _psd_chunk(init::AbstractMatrix, dim::Int)
     size(init) == (dim, dim) || throw(
-        ArgumentError(
-            "The initial PSD matrix must be $(dim)×$(dim), got $(size(init)).",
-        ),
+        ArgumentError("The initial PSD matrix must be $(dim)×$(dim), got $(size(init))."),
     )
     k = dim * (dim - 1) ÷ 2
     return vcat(init[lowertriangind(init)], diag(init))
@@ -69,36 +67,22 @@ model.objective = x -> -loglikelihood(MvNormal(μ, M(x[1])), samples)
 ```
 """
 function add_psd_variable!(
-    model::Model,
-    dim::Int;
-    init::AbstractMatrix = Matrix{Float64}(I, dim, dim),
+    model::Model, dim::Int; init::AbstractMatrix=Matrix{Float64}(I, dim, dim)
 )
     offset = length(NonconvexCore.flatten(getmin(model))[1])
     chunk = _psd_chunk(init, dim)
     k = dim * (dim - 1) ÷ 2
-    addvar!(
-        model,
-        vcat(fill(-Inf, k), zeros(dim)),
-        fill(Inf, length(chunk));
-        init = chunk,
-    )
+    addvar!(model, vcat(fill(-Inf, k), zeros(dim)), fill(Inf, length(chunk)); init=chunk)
     return PSDMatrixView(offset, dim)
 end
 
 function add_psd_variable!(
-    model::VecModel,
-    dim::Int;
-    init::AbstractMatrix = Matrix{Float64}(I, dim, dim),
+    model::VecModel, dim::Int; init::AbstractMatrix=Matrix{Float64}(I, dim, dim)
 )
     offset = length(getmin(model))
     chunk = _psd_chunk(init, dim)
     k = dim * (dim - 1) ÷ 2
-    addvar!(
-        model,
-        vcat(fill(-Inf, k), zeros(dim)),
-        fill(Inf, length(chunk));
-        init = chunk,
-    )
+    addvar!(model, vcat(fill(-Inf, k), zeros(dim)), fill(Inf, length(chunk)); init=chunk)
     return PSDMatrixView(offset, dim)
 end
 
@@ -106,17 +90,13 @@ function add_psd_variable!(
     model::DictModel,
     name::Union{Symbol,String},
     dim::Int;
-    init::AbstractMatrix = Matrix{Float64}(I, dim, dim),
+    init::AbstractMatrix=Matrix{Float64}(I, dim, dim),
 )
     offset = sum(v -> length(NonconvexCore.flatten(v)[1]), values(getmin(model)))
     chunk = _psd_chunk(init, dim)
     k = dim * (dim - 1) ÷ 2
     addvar!(
-        model,
-        name,
-        vcat(fill(-Inf, k), zeros(dim)),
-        fill(Inf, length(chunk));
-        init = chunk,
+        model, name, vcat(fill(-Inf, k), zeros(dim)), fill(Inf, length(chunk)); init=chunk
     )
     return PSDMatrixView(offset, dim)
 end
