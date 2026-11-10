@@ -52,6 +52,16 @@ function _optimize_precheck(model::AbstractModel, optimizer::SDPQuadAlg, args...
     return nothing
 end
 
+"""
+    SDPQuadResult
+
+The result of [`SDPQuadAlg`](@ref) with fields:
+
+- `minimum`: the objective value at the minimizer.
+- `minimizer`: the minimizer in the `(x_L, x_D)` variable layout of the
+  original model, i.e. the decompressed entries of the re-parameterized
+  factor variables.
+"""
 struct SDPQuadResult{M1,M2}
     minimum::M1
     minimizer::M2

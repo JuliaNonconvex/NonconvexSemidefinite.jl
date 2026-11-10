@@ -53,6 +53,14 @@ function BarrierAlg(; sub_alg)
     return BarrierAlg(sub_alg)
 end
 
+"""
+    SDPBarrierAlg(sub_alg)
+
+Alias of [`BarrierAlg`](@ref). Historically the barrier meta-algorithm only
+handled semidefinite constraints; the generalized [`BarrierAlg`](@ref) now
+also barrierifies inequalities and variable bounds, selected through
+[`BarrierSelection`](@ref). Both names construct the same meta-algorithm.
+"""
 const SDPBarrierAlg = BarrierAlg
 
 # The barrier meta-algorithm can barrierify ineq/box/sd constraints itself;
@@ -130,15 +138,41 @@ function BarrierOptions(;
     )
 end
 
+"""
+    SDPBarrierOptions(; kwargs...)
+
+Alias of [`BarrierOptions`](@ref) (all keyword arguments are shared).
+"""
 const SDPBarrierOptions = BarrierOptions
 
 # Result
+
+"""
+    SDPBarrierResult
+
+The result of [`BarrierAlg`](@ref) (or its alias [`SDPBarrierAlg`](@ref))
+with fields:
+
+- `minimum`: the best objective value over the sub-problem sequence.
+- `minimizer`: the minimizer attaining `minimum`.
+- `results`: if `keep_all = true` in [`BarrierOptions`](@ref), the full
+  sub-problem trajectory as a vector of `(objective, minimizer)` pairs;
+  `nothing` otherwise.
+- `optimal_ind`: if `keep_all = true`, the index of the best sub-problem
+  result in `results`; `nothing` otherwise.
+"""
 struct SDPBarrierResult{M1,M2,R,O}
     minimum::M1
     minimizer::M2
     results::R
     optimal_ind::O
 end
+
+"""
+    BarrierResult
+
+Alias of [`SDPBarrierResult`](@ref).
+"""
 const BarrierResult = SDPBarrierResult
 
 struct BarrierWorkspace{
@@ -292,12 +326,8 @@ function to_barrier(
     ε=1e-6,
 )
     ineq_sel, sd_sel, _ = _barrier_units(model, selection)
-    kept_ineq = VectorOfFunctions([
-        cons for (i, cons) in enumerate(model.ineq_constraints.fs) if !(i in ineq_sel)
-    ],)
-    kept_sd = VectorOfFunctions([
-        cons for (i, cons) in enumerate(model.sd_constraints.fs) if !(i in sd_sel)
-    ],)
+    kept_ineq = VectorOfFunctions(_kept(model.ineq_constraints.fs, ineq_sel))
+    kept_sd = VectorOfFunctions(_kept(model.sd_constraints.fs, sd_sel))
     return VecModel(
         Objective(_barrier_objective(model.objective, model, c, selection, ε)),
         model.eq_constraints,
@@ -308,6 +338,18 @@ function to_barrier(
         model.init,
         model.integer,
     )
+end
+
+# Constraints not selected for barrierification, collected with the concrete
+# element type of `fs`. A filtered comprehension over an all-rejected
+# `Vector{SDConstraint}` widens to `Vector{Any}`, which `VectorOfFunctions`
+# rejects; this helper keeps the concrete element type in every case.
+function _kept(fs, sel::AbstractVector{Int})
+    kept = eltype(fs)[]
+    for (i, cons) in enumerate(fs)
+        i in sel || push!(kept, cons)
+    end
+    return kept
 end
 
 function _next_c(c, ms, tol, k, n_iter, c_decr, adaptive)
