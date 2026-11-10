@@ -160,10 +160,13 @@ end
     end
     vm = sd_vm(P)
 
-    # Single pattern (not wrapped in a vector) with one constraint.
+    # Single pattern (not wrapped in a vector) with one constraint. The
+    # decomposition produces one BlockSDConstraint whose function returns
+    # every clique block from a single evaluation.
     dm = chordal_decompose(vm, sparse(P .!= 0))
-    @test length(dm.sd_constraints.fs) == 3
-    @test all(sd -> sd.dim == 2, dm.sd_constraints.fs)
+    @test length(dm.sd_constraints.fs) == 1
+    @test dm.sd_constraints.fs[1] isa NonconvexSemidefinite.BlockSDConstraint
+    @test NonconvexSemidefinite.getdims(dm.sd_constraints.fs[1]) == [2, 2, 2]
 
     # Pattern-count mismatch.
     err = try
@@ -204,7 +207,32 @@ end
 
     # The same pattern is accepted when it covers every entry of P(x0).
     dm_ok = chordal_decompose(vm, sparse(P .!= 0); x0=[0.0])
-    @test length(dm_ok.sd_constraints.fs) == 3
+    @test length(dm_ok.sd_constraints.fs) == 1
+
+    # The matrix-valued function is evaluated exactly once per call.
+    calls = Ref(0)
+    Pcounted(x) = (calls[] += 1; copy(P))
+    vmc = NonconvexCore.VecModel(
+        NonconvexCore.Objective(x -> 0.0),
+        NonconvexCore.VectorOfFunctions(()),
+        NonconvexCore.VectorOfFunctions(()),
+        NonconvexCore.VectorOfFunctions([NonconvexCore.SDConstraint(Pcounted, 4)]),
+        [-1.0],
+        [1.0],
+        [0.0],
+        falses(1),
+    )
+    dmc = chordal_decompose(vmc, sparse(P .!= 0))
+    calls[] = 0
+    blocks = dmc.sd_constraints.fs[1]([0.5])
+    @test calls[] == 1
+    @test blocks isa AbstractVector
+    @test length(blocks) == 3
+    @test all(B -> size(B) == (2, 2), blocks)
+    # The blocks are exactly the clique slices of the single evaluation.
+    P0 = copy(P)
+    expected = [P0[1:2, 1:2], P0[2:3, 2:3], P0[3:4, 3:4]]
+    @test Set(vec.(blocks)) == Set(vec.(expected))
 end
 
 @testitem "modeling: PSDMatrixView and add_psd_variable! error paths" begin

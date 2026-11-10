@@ -118,12 +118,38 @@ function aggregate_sparsity(f, x0::AbstractVector, dim::Int)
 end
 
 """
+    BlockSDConstraint
+
+A semidefinite constraint whose function returns a vector of matrices
+(one per block) from a single evaluation. `chordal_decompose` uses it to
+evaluate the matrix-valued function once and slice every clique block
+from that single evaluation instead of re-evaluating it per clique.
+
+The function must return a `Vector` (or tuple) of symmetric matrices of
+sizes `dims`.
+"""
+struct BlockSDConstraint{F} <: AbstractConstraint
+    f::F
+    dims::Vector{Int}
+end
+(c::BlockSDConstraint)(args...; kwargs...) = c.f(args...; kwargs...)
+getdim(c::BlockSDConstraint) = sum(c.dims)
+getdims(c::BlockSDConstraint) = c.dims
+
+# View any semidefinite constraint as its list of matrix blocks.
+_sd_dims(c::SDConstraint) = [c.dim]
+_sd_dims(c::BlockSDConstraint) = c.dims
+_sd_blocks(c::SDConstraint, x) = (c(x),)
+_sd_blocks(c::BlockSDConstraint, x) = Tuple(c(x))
+
+"""
     chordal_decompose(model::VecModel, patterns; x0 = nothing)
     chordal_decompose(model::VecModel; x0)
 
-Replace each semidefinite constraint `P(x) ⪰ 0` of `model` with the clique
-constraints `P(x)[C, C] ⪰ 0` for every maximal clique `C` of a chordal
-extension of the constraint's sparsity pattern. The two models are equivalent
+Replace each semidefinite constraint `P(x) ⪰ 0` of `model` with a single
+[`BlockSDConstraint`](@ref) whose function evaluates `P` once and returns
+every maximal-clique submatrix `P(x)[C, C]` of a chordal extension of the
+constraint's sparsity pattern. The two models are equivalent
 (Grone-Johnson-Sá-Wolkowicz).
 
 `patterns` is a vector with one sparsity pattern per semidefinite constraint
@@ -143,7 +169,7 @@ function chordal_decompose(model::VecModel, patterns; x0=nothing)
             "Got $(length(pats)) sparsity patterns for $n_sd semidefinite constraints; provide one per constraint.",
         ),
     )
-    sd_fs = SDConstraint[]
+    sd_fs = NonconvexCore.AbstractConstraint[]
     for (k, sd) in enumerate(model.sd_constraints.fs)
         f, dim = sd.f, sd.dim
         pat = pats[k]
@@ -179,9 +205,13 @@ function chordal_decompose(model::VecModel, patterns; x0=nothing)
             end
         end
         cliques = chordal_extension(pat)
-        for C in cliques
-            push!(sd_fs, SDConstraint(x -> f(x)[C, C], length(C)))
-        end
+        dims = Int[length(C) for C in cliques]
+        # A single constraint whose function evaluates `f` once and returns
+        # every clique block of that one evaluation.
+        push!(sd_fs, BlockSDConstraint(x -> begin
+            P = f(x)
+            return [P[C, C] for C in cliques]
+        end, dims))
     end
     return VecModel(
         model.objective,

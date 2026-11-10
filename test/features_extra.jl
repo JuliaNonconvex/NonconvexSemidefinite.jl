@@ -165,9 +165,11 @@ end
     model = make_model()
     vm, _, _ = NonconvexCore.tovecmodel(model)
     dm = chordal_decompose(vm, pattern)
-    # One 4×4 constraint becomes three 2×2 clique constraints.
-    @test length(dm.sd_constraints.fs) == 3
-    @test all(sd_c -> sd_c.dim == 2, dm.sd_constraints.fs)
+    # One 4×4 constraint becomes a single block constraint with three 2×2
+    # clique blocks.
+    @test length(dm.sd_constraints.fs) == 1
+    @test dm.sd_constraints.fs[1] isa NonconvexSemidefinite.BlockSDConstraint
+    @test NonconvexSemidefinite.getdims(dm.sd_constraints.fs[1]) == [2, 2, 2]
     # Every off-diagonal pattern entry is covered by some clique.
     cliques = chordal_extension(pattern)
     for j in 1:4, i in (j + 1):4
@@ -188,9 +190,9 @@ end
     @test rchord.minimizer ≈ [1.0, 1.0, 1.0, 1.0] atol = 1e-3
     @test rdense.minimizer ≈ rchord.minimizer atol = 1e-3
     @test rdense.minimum ≈ rchord.minimum atol = 1e-3
-    # Every clique constraint value at the chordal minimizer is PSD.
-    for sd_c in dm.sd_constraints.fs
-        @test minimum(eigvals(Symmetric(sd_c(rchord.minimizer)))) > -1e-5
+    # Every clique block value at the chordal minimizer is PSD.
+    for B in dm.sd_constraints.fs[1](rchord.minimizer)
+        @test minimum(eigvals(Symmetric(B))) > -1e-5
     end
 end
 
