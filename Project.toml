@@ -1,6 +1,6 @@
 name = "NonconvexSemidefinite"
 uuid = "9e21ff56-eb25-42d3-b86f-5b0612f555e7"
-version = "0.4.0"
+version = "0.3.0"
 authors = ["Mohamed Tarek <mohdibntarek@gmail.com> and contributors"]
 
 [deps]
