@@ -226,5 +226,7 @@ function optimize!(workspace::SDPQuadWorkspace)
     checksubproblem!(submodel, sub_alg; context="the re-parameterized subproblem")
     result_i = optimize(submodel, sub_alg, fx0; options=options.sub_options)
     minimizer = link(result_i.minimizer)
-    return SDPQuadResult(model.objective(minimizer), minimizer)
+    obj = getobjective(model)
+    obj === nothing && throw(ArgumentError("The model has no objective."))
+    return SDPQuadResult(obj(minimizer), minimizer)
 end

@@ -331,7 +331,8 @@ function optimize!(workspace::BarrierWorkspace)
         Tuple(c_decr)
     end
     ineq_sel, sd_sel, ms = _barrier_units(model, barrier)
-    objective0 = model.objective
+    objective0 = getobjective(model)
+    objective0 === nothing && throw(ArgumentError("The model has no objective."))
     x = copy(x0)
     obj0 = objective0(x)
     c = c_init isa Real ? ntuple(_ -> c_init, length(ms)) : Tuple(c_init)
