@@ -1,5 +1,7 @@
 # Interior point meta-algorithm for handling nonlinear semidefinite constraints
 
+![JuliaNonconvex logo](https://raw.githubusercontent.com/JuliaNonconvex/NonconvexSemidefinite.jl/master/docs/src/assets/logo.png)
+
 ## Description
 
 If you need to keep your any matrix-valued function of the decision variables positive semidefinite, Nonconvex supports an interface for the [barrier method for semidefinite programming](http://eaton.math.rpi.edu/faculty/Mitchell/courses/matp6640/notes/24A_SDPbarrierbeamer.pdf), which is a meta-algorithm transforming the optimization problem to a series of nonlinear programming problems and solving them using the pre-specified `sub_alg` and `sub_options`.
