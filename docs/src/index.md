@@ -1,6 +1,12 @@
 # Interior point meta-algorithm for handling nonlinear semidefinite constraints
 
-![JuliaNonconvex logo](https://raw.githubusercontent.com/JuliaNonconvex/NonconvexSemidefinite.jl/master/docs/src/assets/logo.png)
+```@raw html
+<p align="center">
+  <img src="https://raw.githubusercontent.com/JuliaNonconvex/NonconvexSemidefinite.jl/master/docs/src/assets/logo.png" alt="JuliaNonconvex logo" width="180"/>
+</p>
+```
+
+
 
 ## Description
 
