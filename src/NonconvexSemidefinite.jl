@@ -11,7 +11,7 @@ using ChainRulesCore, Reexport, Parameters
 @reexport using NonconvexCore
 using NonconvexCore: VecModel, AbstractOptimizer, AbstractModel
 using NonconvexCore:
-    VectorOfFunctions, SDConstraint, Objective, EqConstraint, IneqConstraint
+    VectorOfFunctions, SDConstraint, AbstractConstraint, Objective, EqConstraint, IneqConstraint
 import NonconvexCore: Workspace, optimize!, _optimize_precheck
 
 # Semidefinite programming

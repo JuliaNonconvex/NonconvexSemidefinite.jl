@@ -223,7 +223,7 @@ function Workspace(model::VecModel, optimizer::BarrierAlg, x0, args...; options,
         end
     end
     for i in _selected(barrier.sd, length(model.sd_constraints.fs))
-        if !isposdef(model.sd_constraints.fs[i](x0))
+        if !all(isposdef, _sd_blocks(model.sd_constraints.fs[i], x0))
             throw(
                 ArgumentError(
                     "The initial point must be strictly interior to the " *
@@ -233,10 +233,11 @@ function Workspace(model::VecModel, optimizer::BarrierAlg, x0, args...; options,
             )
         end
     end
+    sd_sel = _selected(barrier.sd, length(model.sd_constraints.fs))
     nunits =
         length(_selected(barrier.ineq, length(model.ineq_constraints.fs))) +
         (barrier.box ? 1 : 0) +
-        length(_selected(barrier.sd, length(model.sd_constraints.fs)))
+        sum(length(_sd_dims(model.sd_constraints.fs[i])) for i in sd_sel; init=0)
     for (name, val) in (("c_init", c_init), ("c_decr", c_decr))
         if val isa AbstractArray
             @assert length(val) == nunits "$name should have one entry per barrierified constraint group ($nunits), got $(length(val))."
@@ -278,7 +279,7 @@ function _barrier_units(model, barrier)
         push!(ms, nfinite)
     end
     for i in sd_sel
-        push!(ms, model.sd_constraints.fs[i].dim)
+        append!(ms, _sd_dims(model.sd_constraints.fs[i]))
     end
     return ineq_sel, sd_sel, ms
 end
@@ -303,8 +304,10 @@ function _barrier_objective(objective0, model, c::Tuple, barrier, ε)
             u += 1
         end
         for i in sd_sel
-            target += c[u] * -safe_logdet(model.sd_constraints.fs[i](x))
-            u += 1
+            for B in _sd_blocks(model.sd_constraints.fs[i], x)
+                target += c[u] * -safe_logdet(B)
+                u += 1
+            end
         end
         return target
     end

@@ -286,25 +286,26 @@ end
     # Structural sparsity probing (diagonal pattern).
     pat = aggregate_sparsity(x -> diagm(x), ones(3), 3)
     @test Matrix(pat) == Matrix(I, 3, 3)
-    # chordal_decompose replaces one tridiagonal 4×4 PSD constraint with three
-    # 2×2 clique constraints, all PSD (Grone-Johnson-Sá-Wolkowicz equivalence).
+    # chordal_decompose replaces one tridiagonal 4×4 PSD constraint with a
+    # single block constraint holding three 2×2 clique blocks, all PSD
+    # (Grone-Johnson-Sá-Wolkowicz equivalence).
     P = [2.0 0.5 0.0 0.0; 0.5 2.0 0.5 0.0; 0.0 0.5 2.0 0.5; 0.0 0.0 0.5 2.0]
     model = Model(x -> 0.0)
     addvar!(model, -1.0, 1.0)
     add_sd_constraint!(model, x -> P, 4)
     vm, x0, _ = NonconvexCore.tovecmodel(model)
     dm = chordal_decompose(vm, sparse(P .!= 0))
-    @test length(dm.sd_constraints.fs) == 3
-    for sd in dm.sd_constraints.fs
-        M = sd(x0)
+    @test length(dm.sd_constraints.fs) == 1
+    @test dm.sd_constraints.fs[1] isa NonconvexSemidefinite.BlockSDConstraint
+    for M in dm.sd_constraints.fs[1](x0)
         @test size(M) == (2, 2)
         @test minimum(eigvals(Symmetric(M))) > 0
     end
     # Auto-probed decomposition: the union of AD structure and value support
-    # recovers the tridiagonal structure → three 2×2 clique constraints.
+    # recovers the tridiagonal structure → three 2×2 clique blocks.
     dm_auto = chordal_decompose(vm; x0=x0)
-    @test length(dm_auto.sd_constraints.fs) == 3
-    @test all(sd -> sd.dim == 2, dm_auto.sd_constraints.fs)
+    @test length(dm_auto.sd_constraints.fs) == 1
+    @test NonconvexSemidefinite.getdims(dm_auto.sd_constraints.fs[1]) == [2, 2, 2]
     # A dense constant matrix has full value support → a single 4×4 clique.
     Pdense = P + 0.1 * ones(4, 4)
     modeld = Model(x -> 0.0)
@@ -313,7 +314,7 @@ end
     vmd, x0d, _ = NonconvexCore.tovecmodel(modeld)
     dmd = chordal_decompose(vmd; x0=x0d)
     @test length(dmd.sd_constraints.fs) == 1
-    @test dmd.sd_constraints.fs[1].dim == 4
+    @test NonconvexSemidefinite.getdims(dmd.sd_constraints.fs[1]) == [4]
     # A user pattern that misses a nonzero entry of P(x0) is rejected.
     Pbad = copy(P)
     Pbad[1, 3] = 0.1

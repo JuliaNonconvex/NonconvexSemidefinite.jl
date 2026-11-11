@@ -81,10 +81,11 @@ function _sd_layout(model::VecModel)
     offset = 0
     layouts = Tuple{Int,Int,Int}[]
     for sd in model.sd_constraints.fs
-        n = sd.dim
-        k = n * (n - 1) ÷ 2
-        push!(layouts, (offset, k, n))
-        offset += k + n
+        for n in _sd_dims(sd)
+            k = n * (n - 1) ÷ 2
+            push!(layouts, (offset, k, n))
+            offset += k + n
+        end
     end
     return layouts
 end
