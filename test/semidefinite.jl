@@ -21,6 +21,25 @@
         @test cotans[2] isa ChainRulesCore.AbstractZero
         @test cotans[3] isa ChainRulesCore.AbstractZero
     end
+
+    @testset "rearrange_x rrule with mixed zero cotangents" begin
+        # Regression test: the pullback used to zero out BOTH input
+        # cotangents whenever EITHER output cotangent was AbstractZero,
+        # silently dropping the other nonzero cotangent.
+        y, pb = ChainRulesCore.rrule(
+            NonconvexSemidefinite.rearrange_x, [0.1, 0.2, 0.3], [1.0, 2.0, 3.0]
+        )
+        cotans = pb((ChainRulesCore.ZeroTangent(), ones(3, 3)))
+        @test cotans[1] isa ChainRulesCore.AbstractZero
+        @test cotans[2] isa ChainRulesCore.AbstractZero
+        @test cotans[3] == [1.0, 1.0, 1.0]
+
+        cotans = pb((ones(3, 3), ChainRulesCore.ZeroTangent()))
+        @test cotans[1] isa ChainRulesCore.AbstractZero
+        # the three strictly-lower-triangle entries of ones(3, 3)
+        @test cotans[2] == [1.0, 1.0, 1.0]
+        @test cotans[3] isa ChainRulesCore.AbstractZero
+    end
 end
 
 @testitem "Single semi-definite constraint" begin
@@ -490,4 +509,48 @@ end
     caps = solver_capabilities(SDPQuadAlg(sub_alg=IpoptAlg()))
     @test caps.linear_sd === true
     @test caps.nonlinear_sd === true
+end
+
+@testitem "ForwardDiff through decompress_symmetric" begin
+    using NonconvexSemidefinite, LinearAlgebra, Test
+    using ForwardDiff
+
+    f(x) = sum(decompress_symmetric(x[1:3], x[4:6]))
+    x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    # Regression test: `rearrange_x` used to build a Float64 buffer and
+    # assign dual numbers into it, throwing
+    # `MethodError: no method matching Float64(::ForwardDiff.Dual)`.
+    g = ForwardDiff.gradient(f, x)
+    # f(x) = 2*(x1 + x2 + x3) + x4 + x5 + x6
+    @test g ≈ [2.0, 2.0, 2.0, 1.0, 1.0, 1.0]
+
+    # Central finite-difference check
+    h = 1e-6
+    gfd = similar(x)
+    for i in eachindex(x)
+        xp = copy(x)
+        xp[i] += h
+        xm = copy(x)
+        xm[i] -= h
+        gfd[i] = (f(xp) - f(xm)) / (2h)
+    end
+    @test g ≈ gfd rtol = 1e-5 atol = 1e-8
+end
+
+@testitem "Burer-Monteiro warm start uses dominant eigenpairs" begin
+    using NonconvexSemidefinite, NonconvexCore, LinearAlgebra, Test
+
+    A0 = diagm([0.1, 5.0, 1.0])
+    m = Model(x -> 0.0)
+    addvar!(m, fill(-Inf, 6), fill(Inf, 6), init=[zeros(3); [0.1, 5.0, 1.0]])
+    add_sd_constraint!(m, x -> decompress_symmetric(@view(x[1:3]), @view(x[4:6])), 3)
+    vm, x0, _ = NonconvexCore.tovecmodel(m)
+    layouts = NonconvexSemidefinite._sd_layout(vm)
+    fx = NonconvexSemidefinite._initial_factors(vm, layouts, 2, 1e-6)
+    R = reshape(fx, 3, 2)
+    # Regression test: the warm start used the r SMALLEST eigenpairs
+    # (ascending `eigen` order); it must keep the r LARGEST instead.
+    @test R * R' ≈ diagm([0.0, 5.0, 1.0])
+    # The dominant-pair warm start is closer to A0 than the ascending choice.
+    @test norm(R * R' - A0) < norm(diagm([0.1, 0.0, 1.0]) - A0)
 end

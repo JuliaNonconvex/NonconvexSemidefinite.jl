@@ -100,14 +100,15 @@ end
     @test cotL[2] == ones(3)
     @test cotL[3] == zeros(3)
 
-    # Mixed AbstractZero cotangents: documented behaviour returns zero for
-    # both tangent components as soon as one of them is an AbstractZero.
+    # Mixed AbstractZero cotangents: each output cotangent is handled
+    # independently — a zero cotangent on one output must not discard the
+    # nonzero cotangent of the other.
     cot2 = pb((ones(3, 3), ChainRulesCore.ZeroTangent()))
-    @test cot2[2] isa ChainRulesCore.AbstractZero
+    @test cot2[2] == ones(3)                       # the nonzero ΔL survives
     @test cot2[3] isa ChainRulesCore.AbstractZero
     cot3 = pb((ChainRulesCore.ZeroTangent(), ones(3, 3)))
     @test cot3[2] isa ChainRulesCore.AbstractZero
-    @test cot3[3] isa ChainRulesCore.AbstractZero
+    @test cot3[3] == ones(3)                       # the nonzero ΔD survives
 end
 
 @testitem "chordal: pattern validation errors" begin
@@ -859,7 +860,7 @@ end
     # --- low-rank (rank 1) Burer-Monteiro: A = R R', R ∈ R^{2×1} ---
     r_lr = optimize(vm, alg, x0; options=SDPQuadOptions(sub_options=DummyOptions(), rank=1))
     A_lr = decompress_symmetric(@view(r_lr.minimizer[1:1]), @view(r_lr.minimizer[2:3]))
-    @test A_lr ≈ [2.0 0.0; 0.0 0.0] atol = 1e-8
+    @test A_lr ≈ [0.0 0.0; 0.0 3.0] atol = 1e-8  # keeps the dominant eigenpair
 
     # --- rank 2 recovers the diagonal matrix exactly ---
     r_2 = optimize(vm, alg, x0; options=SDPQuadOptions(sub_options=DummyOptions(), rank=2))
