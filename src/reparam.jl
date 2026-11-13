@@ -172,8 +172,11 @@ function _initial_factors(model::VecModel, layouts, rank, diag_floor)
         else
             F = eigen(Matrix(A0))
             r = min(rank, n)
-            v = max.(F.values, 0.0)
-            R = F.vectors[:, 1:r] * Diagonal(sqrt.(v[1:r]))
+            # `eigen` returns eigenvalues in ascending order: warm-start the
+            # rank-r Burer-Monteiro factor from the r LARGEST eigenpairs.
+            order = n:-1:(n - r + 1)
+            v = max.(F.values[order], 0.0)
+            R = F.vectors[:, order] * Diagonal(sqrt.(v))
             append!(fx, vec(R))
         end
     end

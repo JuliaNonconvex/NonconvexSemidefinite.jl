@@ -54,7 +54,9 @@ function chordal_extension(pattern::SparseMatrixCSC)
         A[i, i] += n
     end
     F = cholesky(A; check=false)
-    L = sparse(F.L)
+    # Concretize the (possibly Symmetric-wrapped) factor so `nzrange` and
+    # `rowvals` resolve for every element type.
+    L = convert(SparseMatrixCSC{Float64,Int}, sparse(F.L))
     cliques = Vector{Vector{Int}}()
     for j in 1:n
         C = Int[j]

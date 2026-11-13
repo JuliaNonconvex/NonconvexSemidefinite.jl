@@ -11,7 +11,12 @@ using ChainRulesCore, Reexport, Parameters
 @reexport using NonconvexCore
 using NonconvexCore: VecModel, AbstractOptimizer, AbstractModel
 using NonconvexCore:
-    VectorOfFunctions, SDConstraint, AbstractConstraint, Objective, EqConstraint, IneqConstraint
+    VectorOfFunctions,
+    SDConstraint,
+    AbstractConstraint,
+    Objective,
+    EqConstraint,
+    IneqConstraint
 import NonconvexCore: Workspace, optimize!, _optimize_precheck
 
 # Semidefinite programming
@@ -24,7 +29,13 @@ end
 
 function rearrange_x(x_L::AbstractVector, x_D::AbstractVector)
     mat_dim = length(x_D)
-    L = zeros(mat_dim, mat_dim)
+    # Preserve the element type of the inputs (e.g. ForwardDiff.Dual) instead
+    # of forcing Float64, which strips or errors on AD dual numbers.
+    # `Matrix{T}` (rather than `zeros(T, ...)`) keeps the construction
+    # unambiguous for static analysis even when T is abstract.
+    T = promote_type(eltype(x_L), eltype(x_D))
+    L = Matrix{T}(undef, mat_dim, mat_dim)
+    fill!(L, 0)
     L[lowertriangind(L)] .= x_L
     D = diagm(x_D)
     return (L, D)
@@ -58,11 +69,10 @@ function ChainRulesCore.rrule(
     ::typeof(rearrange_x), x_L::AbstractVector, x_D::AbstractVector
 )
     function pullback((ΔL, ΔD))
-        if ΔL isa ChainRulesCore.AbstractZero || ΔD isa ChainRulesCore.AbstractZero
-            return NoTangent(), ZeroTangent(), ZeroTangent()
-        end
-        Δx_L = ΔL[lowertriangind(ΔL)]
-        Δx_D = diag(ΔD)
+        # Handle each cotangent independently: a zero cotangent in one output
+        # must not discard the nonzero cotangent of the other output.
+        Δx_L = ΔL isa ChainRulesCore.AbstractZero ? ZeroTangent() : ΔL[lowertriangind(ΔL)]
+        Δx_D = ΔD isa ChainRulesCore.AbstractZero ? ZeroTangent() : diag(ΔD)
         return NoTangent(), Δx_L, Δx_D
     end
     return rearrange_x(x_L, x_D), pullback
