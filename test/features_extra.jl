@@ -44,6 +44,24 @@
     @test r_lr.minimum ≈ 0.0 atol = 1e-6
 end
 
+@testitem "SDPQuadAlg rejects rank > dim" begin
+    using NonconvexSemidefinite, NonconvexIpopt, Test
+
+    # Regression test: a low-rank factor larger than the matrix itself used
+    # to allocate n*rank factor variables while the warm start only filled
+    # n*min(rank, n), handing the sub-solver an init/bounds size mismatch.
+    T = [4.0 2.0; 2.0 1.0]
+    m = Model(x -> begin
+        A = decompress_symmetric(@view(x[1:1]), @view(x[2:3]))
+        return sum(abs2, A .- T)
+    end)
+    x0 = [0.0, 2.0, 1.0]
+    addvar!(m, [-10.0, 0.0, 0.0], [10.0, 10.0, 10.0]; init=x0)
+    add_sd_constraint!(m, x -> decompress_symmetric(@view(x[1:1]), @view(x[2:3])), 2)
+    options = SDPQuadOptions(sub_options=IpoptOptions(max_iter=5), rank=3)  # > n = 2
+    @test_throws ArgumentError optimize(m, SDPQuadAlg(sub_alg=IpoptAlg()), x0, options=options)
+end
+
 @testitem "BarrierAlg end-to-end on a non-SDP problem (ineq + box)" begin
     using NonconvexSemidefinite, NonconvexIpopt, LinearAlgebra, Test
 

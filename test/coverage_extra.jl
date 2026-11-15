@@ -580,6 +580,17 @@ end
     )
     @test length(bm_part.ineq_constraints.fs) == 1
     @test length(bm_part.sd_constraints.fs) == 1
+    # Regression test: barrierified box constraints are removed from the
+    # sub-model (encoded in the log-barrier objective instead); keeping them
+    # hard used to duplicate the barrier terms and block the sub-solver's
+    # line searches from probing the smooth-extension region.
+    @test all(!isfinite, bm_part.box_min)
+    @test all(!isfinite, bm_part.box_max)
+    bm_nobox = NonconvexSemidefinite.to_barrier(
+        vm_mix, (0.5, 0.5); selection=BarrierSelection(ineq=[2], box=false, sd=false)
+    )
+    @test bm_nobox.box_min == vm_mix.box_min
+    @test bm_nobox.box_max == vm_mix.box_max
 
     # --- barrier objective: value at a strictly interior point, and the
     # smooth-extension/safe-logdet behaviour at an infeasible point ---
