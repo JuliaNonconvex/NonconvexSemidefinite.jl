@@ -1,5 +1,8 @@
 # NEWS
 
+## 0.4.4
+
+- `to_barrier` now removes barrierified box constraints from the sub-model (encoded in the log-barrier objective), so the smooth-extension region is reachable and the barrier terms are not duplicated.\n- `SDPQuadAlg` rejects `rank > dim` with a clear `ArgumentError` instead of handing the sub-solver an init/bounds size mismatch.
 ## 0.4.3
 
 - Fixed the `decompress_symmetric` docstring example (the `x_L` mapping was
