@@ -331,13 +331,23 @@ function to_barrier(
     ineq_sel, sd_sel, _ = _barrier_units(model, selection)
     kept_ineq = VectorOfFunctions(_kept(model.ineq_constraints.fs, ineq_sel))
     kept_sd = VectorOfFunctions(_kept(model.sd_constraints.fs, sd_sel))
+    # Barrierified box constraints are encoded in the log-barrier objective
+    # and must be removed from the sub-model: keeping them hard would both
+    # duplicate the barrier terms and prevent the sub-solver's line searches
+    # from probing the C² smooth-extension region beyond the bounds.
+    if selection.box
+        box_min = fill(-Inf, length(model.box_min))
+        box_max = fill(Inf, length(model.box_max))
+    else
+        box_min, box_max = model.box_min, model.box_max
+    end
     return VecModel(
         Objective(_barrier_objective(model.objective, model, c, selection, ε)),
         model.eq_constraints,
         kept_ineq,
         kept_sd,
-        model.box_min,
-        model.box_max,
+        box_min,
+        box_max,
         model.init,
         model.integer,
     )

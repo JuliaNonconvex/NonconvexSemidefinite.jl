@@ -213,6 +213,20 @@ function optimize!(workspace::SDPQuadWorkspace)
     @unpack model, x0, options, sub_alg = workspace
     @unpack rank, diag_floor = options
     layouts = _check_layout(model)
+    # A low-rank factor larger than the matrix itself is invalid: the
+    # factor chunk then allocates n*rank variables while the warm start
+    # only fills n*min(rank, n), silently handing the sub-solver an init
+    # that disagrees with its bounds.
+    if rank !== nothing
+        for (_, _, n) in layouts
+            rank <= n || throw(
+                ArgumentError(
+                    "SDPQuadOptions(rank = $rank) exceeds the dimension ($n) of a " *
+                    "semidefinite block; use rank <= n or rank = nothing.",
+                ),
+            )
+        end
+    end
     nvars_new = sum(l -> _factor_chunk_size(l[3], rank), layouts)
     link = _factor_link(layouts, rank, nvars_new)
     # build the factor-space sub-model: no semidefinite constraints
