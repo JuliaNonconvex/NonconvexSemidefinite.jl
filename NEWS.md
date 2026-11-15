@@ -1,5 +1,10 @@
 # NEWS
 
+## 0.4.3
+
+- Fixed the `decompress_symmetric` docstring example (the `x_L` mapping was
+  wrong); documented the 0.3.x/0.4.x releases in NEWS.
+
 ## 0.4.2
 
 - Fixed ForwardDiff through `decompress_symmetric`, an rrule cotangent loss
