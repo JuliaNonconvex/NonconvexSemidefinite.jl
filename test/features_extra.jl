@@ -59,7 +59,9 @@ end
     addvar!(m, [-10.0, 0.0, 0.0], [10.0, 10.0, 10.0]; init=x0)
     add_sd_constraint!(m, x -> decompress_symmetric(@view(x[1:1]), @view(x[2:3])), 2)
     options = SDPQuadOptions(sub_options=IpoptOptions(max_iter=5), rank=3)  # > n = 2
-    @test_throws ArgumentError optimize(m, SDPQuadAlg(sub_alg=IpoptAlg()), x0, options=options)
+    @test_throws ArgumentError optimize(
+        m, SDPQuadAlg(sub_alg=IpoptAlg()), x0, options=options
+    )
 end
 
 @testitem "BarrierAlg end-to-end on a non-SDP problem (ineq + box)" begin
