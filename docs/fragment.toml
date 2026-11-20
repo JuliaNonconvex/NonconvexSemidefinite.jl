@@ -3,8 +3,40 @@ modules = ["NonconvexSemidefinite"]
 doctest_setup = "using NonconvexSemidefinite"
 
 [[pages]]
-title = "Semidefinite"
+title = "Introduction"
 file = "index.md"
+
+[[pages]]
+title = "Quick start"
+file = "quickstart.md"
+
+[[pages]]
+title = "Quadratic re-parameterization"
+file = "quadratic.md"
+
+[[pages]]
+title = "The general barrier method"
+file = "barrier.md"
+
+[[pages]]
+title = "Options and optimizer"
+file = "options.md"
+
+[[pages]]
+title = "Matrix interfaces"
+file = "interfaces.md"
+
+[[pages]]
+title = "Projection utilities"
+file = "projection.md"
+
+[[pages]]
+title = "Chordal decomposition utilities"
+file = "chordal.md"
+
+[[pages]]
+title = "Modeling helpers"
+file = "modeling.md"
 
 [[pages]]
 title = "Theory"
