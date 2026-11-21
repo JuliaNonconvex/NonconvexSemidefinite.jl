@@ -1,4 +1,4 @@
-name = "Semidefinite"
+name = "NonconvexSemidefinite"
 modules = ["NonconvexSemidefinite"]
 doctest_setup = "using NonconvexSemidefinite"
 

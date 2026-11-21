@@ -1,4 +1,4 @@
-# Interior point meta-algorithm for handling nonlinear semidefinite constraints
+# NonconvexSemidefinite
 
 ```@raw html
 <p align="center">
