@@ -1,7 +1,5 @@
 # NonconvexSemidefinite
 
-![JuliaNonconvex logo](https://raw.githubusercontent.com/JuliaNonconvex/NonconvexSemidefinite.jl/master/docs/src/assets/logo.png)
-
 
 
 ## Description
