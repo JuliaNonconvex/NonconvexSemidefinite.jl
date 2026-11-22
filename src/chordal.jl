@@ -406,7 +406,9 @@ Returns `(dmodel, d0, mapper)` where `dmodel` is the transformed
 per clique), `d0` its initial point, and `mapper` extracts the original
 variables from a transformed point.
 """
-function chordal_transform(model::VecModel, patterns; x0=model.init, labels=nothing)
+function chordal_transform(
+    model::VecModel, patterns; x0=model.init, labels=nothing, coupling_weight=1.0
+)
     n0 = length(model.box_min)
     pats = patterns isa AbstractVector ? patterns : [patterns]
     # One pattern per PSD component of the set constraints, in order.
@@ -495,7 +497,9 @@ function chordal_transform(model::VecModel, patterns; x0=model.init, labels=noth
         cliques = cliques_per[ci]
         ranges = block_ranges[((ci - 1) * length(cliques) + 1):(ci * length(cliques))]
         entries = _coupling_entries(cliques, s.dim)
-        fun = _coupling_fun(c, k, n0, cliques, ranges, entries, s.dim, coupling_scales[ci])
+        fun = _coupling_fun(
+            c, k, n0, cliques, ranges, entries, s.dim, coupling_scales[ci], coupling_weight
+        )
         push!(
             set_cs,
             FunctionInSet(fun, NonconvexCore.EqualTo(zeros(length(entries))), c.flags),
@@ -572,12 +576,24 @@ function _coupling_entries(cliques, n::Int)
     return [(i, j) for j in 1:n for i in 1:j if compl[i, j]]
 end
 
-# The normalized coupling residual P/sc - ΣEᵀỸE on the extension-pattern
-# entries (formulation-level scaling): the bundle is evaluated once, the
-# clique blocks (the normalized decomposition variables Ỹ = Y/sc) are read
-# from y. The residuals stay O(1) for matrix scales of any magnitude.
+# The normalized coupling residual w · (P/sc - ΣEᵀỸE) on the
+# extension-pattern entries (formulation-level scaling): the bundle is
+# evaluated once, the clique blocks (the normalized decomposition variables
+# Ỹ = Y/sc) are read from y. The residuals stay O(1) for matrix scales of
+# any magnitude. `coupling_weight` scales the equality up: its penalty
+# force on x grows as w², making the buckling constraint competitive
+# against other groups (e.g. the volume) when the auxiliary variables
+# would otherwise absorb the coupling.
 function _coupling_fun(
-    c::FunctionInSet, k::Int, n0::Int, cliques, ranges, entries, n::Int, sc::Float64
+    c::FunctionInSet,
+    k::Int,
+    n0::Int,
+    cliques,
+    ranges,
+    entries,
+    n::Int,
+    sc::Float64,
+    w::Float64,
 )
     return function (y)
         P = NonconvexCore.set_value(c, y[1:n0])[k]
@@ -586,7 +602,7 @@ function _coupling_fun(
             cliques,
             n,
         )
-        return [P[i, j] / sc - A[i, j] for (i, j) in entries]
+        return [w * (P[i, j] / sc - A[i, j]) for (i, j) in entries]
     end
 end
 
