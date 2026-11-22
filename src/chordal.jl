@@ -722,3 +722,134 @@ end
 function chordal_decompose(model::VecModel; x0)
     return chordal_decompose(model, [nothing for _ in model.sd_constraints.fs]; x0=x0)
 end
+
+"""
+    block_relaxation(model::VecModel, blocks; labels = nothing)
+
+Replace each selected semidefinite component `P(x) ⪰ 0` of `model`'s
+function-in-set constraints with one `SetProduct` of per-block
+[`PSDCone`](@ref) constraints on the principal submatrices `P(x)[C, C]`,
+one for every block `C` of the collection. The component is evaluated once
+per call and all blocks are sliced from that single evaluation; the non-PSD
+components of each rewritten bundle are kept.
+
+!!! warning "This is a relaxation"
+    A PSD matrix has PSD principal submatrices, but the converse fails in
+    general: `P(x)[C, C] ⪰ 0` for every block is only *implied* by
+    `P(x) ⪰ 0`. The rewritten model is therefore a RELAXATION — its feasible
+    set contains the original one, and for minimization its optimal value is
+    a lower bound. Use [`chordal_transform`](@ref) for the exact Fukuda
+    conversion of a chordal sparsity pattern.
+
+The blocks can come from anywhere: the maximal cliques of a chordal
+extension ([`chordal_extension`](@ref)), the per-element degree-of-freedom
+blocks of a Ferrite mesh (see `element_blocks` in the Ferrite extension),
+or any hand-crafted partition. Blocks may overlap and need not cover every
+index.
+
+`blocks` is one block collection per PSD component of the model's set
+constraints, in order; each collection is a vector of index vectors into
+the component's rows (`1:s.dim`). A single collection may be passed when
+the model has exactly one PSD component.
+
+`labels` selects which constraints to rewrite: only PSD components whose
+constraint flags intersect `labels` are replaced (`labels = nothing`
+selects all). The unselected constraints are kept unchanged.
+"""
+function block_relaxation(model::VecModel, blocks; labels=nothing)
+    comps0 = _psd_components(model)
+    blks = _block_collections(blocks, comps0)
+    sel = if labels === nothing
+        trues(length(comps0))
+    else
+        labs = _chordal_labels(labels)
+        [!isdisjoint(c.flags, labs) for (c, _, _) in comps0]
+    end
+    set_cs = FunctionInSet[]
+    for (idx, ((c, k, s), bl)) in enumerate(zip(comps0, blks))
+        if !sel[idx]
+            push!(set_cs, FunctionInSet(x -> c(x), c.set, c.flags))
+            continue
+        end
+        isempty(bl) && throw(
+            ArgumentError(
+                "The block collection of PSD component $idx is empty; a relaxation " *
+                "needs at least one block per selected component.",
+            ),
+        )
+        for C in bl
+            all(1 .<= C .<= s.dim) || throw(
+                ArgumentError(
+                    "The block $(C) of PSD component $idx contains indices outside " *
+                    "the component's rows 1:$(s.dim).",
+                ),
+            )
+        end
+        comps = NonconvexCore.components(c.set)
+        # The non-PSD components of the bundle, kept as (index, set) pairs.
+        kept = [(kk, ss) for (kk, ss) in enumerate(comps) if !(ss isa PSDCone)]
+        blockset = SetProduct(
+            [ss for (_, ss) in kept]..., [PSDCone(length(C)) for C in bl]...
+        )
+        # One evaluation of the bundle per call; the blocks are sliced from
+        # that single evaluation of the PSD component.
+        fun = x -> begin
+            v = NonconvexCore.set_value(c, x)
+            return ([v[kk] for (kk, _) in kept]..., [v[k][C, C] for C in bl]...)
+        end
+        push!(set_cs, FunctionInSet(fun, blockset, c.flags))
+    end
+    return VecModel(
+        model.objective,
+        model.eq_constraints,
+        model.ineq_constraints,
+        model.sd_constraints,
+        VectorOfFunctions(set_cs),
+        model.set_variables,
+        model.box_min,
+        model.box_max,
+        model.init,
+        model.integer,
+    )
+end
+
+# One block collection (a vector of index vectors) per PSD component; a
+# single collection is accepted when the model has exactly one component.
+function _block_collections(blocks, comps0)
+    n = length(comps0)
+    if blocks isa AbstractVector &&
+        !isempty(blocks) &&
+        first(blocks) isa AbstractVector{<:Integer}
+        return [blocks]
+    end
+    blks = blocks isa AbstractVector ? blocks : [blocks]
+    length(blks) == n || throw(
+        ArgumentError(
+            "Got $(length(blks)) block collections for $n PSD components of the " *
+            "model's set constraints; provide one collection per component.",
+        ),
+    )
+    return blks
+end
+
+"""
+    element_blocks(dh::Ferrite.AbstractDofHandler)
+    element_blocks(grid::Ferrite.AbstractGrid, dh::Ferrite.AbstractDofHandler)
+
+The per-element degree-of-freedom blocks of a finite-element mesh: one index
+vector per cell, containing the degrees of freedom of that cell. Provided by
+the Ferrite extension: load Ferrite to enable it. Together with
+[`block_relaxation`](@ref) this gives the element-based semidefinite
+relaxation of an assembled PSD constraint `P(x) ⪰ 0`:
+
+```julia
+dm = block_relaxation(model, element_blocks(dh))
+```
+
+The rewritten model enforces `P(x)[C, C] ⪰ 0` on every element block `C` — a
+relaxation of the assembled constraint, as documented in
+[`block_relaxation`](@ref). For an element-assembled matrix
+`P(x) = Σₑ Eₑᵀ Pₑ(x) Eₑ` whose element blocks have rank one (e.g. truss
+stiffness matrices) the element-wise form is exact.
+"""
+function element_blocks end

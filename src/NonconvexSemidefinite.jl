@@ -8,6 +8,8 @@ export symmetric_pattern, chordal_extension, aggregate_sparsity, chordal_decompo
 export AbstractChordalAlgorithm, AMDAlg, MCSAlg, MFAlg, METISAlg, BTAlg
 export is_chordal, chordal_transform, assemble_chordal
 export PSDCone, has_psd_component
+export block_relaxation
+export element_blocks
 export SDDPartition, sdd_partition, sdd_transform, nsubdomains
 export ArrowSubdomain, ArrowIntersection, arrow_decompose
 export SDCuttingPlaneAlg, SDCuttingPlaneOptions, SDCuttingPlaneResult

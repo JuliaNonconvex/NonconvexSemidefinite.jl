@@ -1,13 +1,14 @@
-# Ferrite.jl glue for the structured domain decomposition (SDD): loading
-# Ferrite enables `sdd_partition(grid, dh)` for a general Ferrite mesh — the
-# cell centroids and the per-cell degrees of freedom of a grid/dof-handler
-# pair are read and handed to the mesh-agnostic
-# `NonconvexSemidefinite.sdd_partition(coords, cell_dofs)`.
+# Ferrite.jl glue for the structured domain decomposition (SDD) and the
+# element-based relaxation: loading Ferrite enables `sdd_partition(grid, dh)`
+# for a general Ferrite mesh (the cell centroids and the per-cell degrees of
+# freedom are read and handed to the mesh-agnostic
+# `NonconvexSemidefinite.sdd_partition(coords, cell_dofs)`) and
+# `element_blocks(dh)` for [`block_relaxation`](@ref).
 
 module NonconvexSemidefiniteFerriteExt
 
 using NonconvexSemidefinite: NonconvexSemidefinite
-import NonconvexSemidefinite: sdd_partition
+import NonconvexSemidefinite: sdd_partition, element_blocks
 using Ferrite: Ferrite
 
 # Cell centroids of a Ferrite grid (any cell type, any dimension).
@@ -43,6 +44,14 @@ function sdd_partition(
     coords = _cell_centroids(grid)
     cell_dofs = [collect(Ferrite.celldofs(dh, i)) for i in 1:ncells]
     return sdd_partition(coords, cell_dofs; n_subdomains=n_subdomains)
+end
+
+function element_blocks(dh::Ferrite.AbstractDofHandler)
+    ncells = Ferrite.getncells(Ferrite.get_grid(dh))
+    return [collect(Ferrite.celldofs(dh, i)) for i in 1:ncells]
+end
+function element_blocks(grid::Ferrite.AbstractGrid, dh::Ferrite.AbstractDofHandler)
+    return element_blocks(dh)
 end
 
 end

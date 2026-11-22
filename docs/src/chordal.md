@@ -34,3 +34,42 @@ decomposed = chordal_decompose(vecmodel, pattern)
 # one 4×4 PSD constraint became three 2×2 clique constraints:
 length(decomposed.sd_constraints.fs)  # 3
 ```
+
+### Function-in-set transforms
+
+The function-in-set framework (NonconvexCore 2.3) has two model transforms
+of its own:
+
+- [`chordal_transform`](@ref) is the exact Fukuda conversion: each PSD
+  component with a chordal sparsity pattern is rewritten as one small PSD
+  variable block per maximal clique, coupled to the original matrix by
+  linear equalities (`P = Σₖ E(Cₖ)ᵀYₖE(Cₖ)`, `Yₖ ⪰ 0`). The reformulation is
+  equivalent to `P(x) ⪰ 0`.
+- [`block_relaxation`](@ref) is the relaxation: each PSD component is
+  rewritten as per-block [`PSDCone`](@ref) constraints on the principal
+  submatrices `P(x)[C, C]` for user-supplied index blocks `C`. The blocks
+  may come from the maximal cliques of a chordal extension or from the
+  cells of a finite-element mesh (see below).
+
+!!! warning "`block_relaxation` is a relaxation"
+    `P(x)[C, C] ⪰ 0` for every block is only *implied* by `P(x) ⪰ 0`; the
+    converse fails in general. The rewritten model's feasible set contains
+    the original one, and for minimization its optimal value is a lower
+    bound.
+
+### Ferrite element blocks
+
+With Ferrite loaded, `element_blocks(dh)` returns the per-cell degree of
+freedom blocks of a finite-element mesh. Feeding them to
+[`block_relaxation`](@ref) gives the element-based semidefinite relaxation
+of an assembled constraint — one small PSD block per element, evaluated
+from a single assembly:
+
+```julia
+using Ferrite, NonconvexSemidefinite
+
+# ... a model whose set constraint bundles (g(x), K(x) + λ̄Kσ(x)) ...
+dm = block_relaxation(vecmodel, element_blocks(dh))
+# dm enforces (K(x) + λ̄Kσ(x))[C, C] ⪰ 0 on every element block C
+```
+
