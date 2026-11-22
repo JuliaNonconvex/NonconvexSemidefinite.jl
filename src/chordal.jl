@@ -500,11 +500,12 @@ function chordal_transform(model::VecModel, patterns; x0=model.init, labels=noth
             for (k, s) in enumerate(NonconvexCore.components(c.set))
                 s isa PSDCone && continue
                 push!(
-                    set_cs, FunctionInSet(x -> NonconvexCore.set_value(c, x)[k], s, c.flags)
+                    set_cs,
+                    FunctionInSet(x -> NonconvexCore.set_value(c, x[1:n0])[k], s, c.flags),
                 )
             end
         else
-            push!(set_cs, FunctionInSet(x -> c(x), c.set, c.flags))
+            push!(set_cs, FunctionInSet(x -> c(x[1:n0]), c.set, c.flags))
         end
     end
     d0 = vcat(float.(x0), block_inits)

@@ -367,3 +367,40 @@ end
     @test part1.n == Ferrite.ndofs(dh1)
     @test length(part1.interface) == 1
 end
+
+@testitem "Chordal transform keeps bundle components on the original variables" begin
+    using NonconvexSemidefinite, NonconvexCore, LinearAlgebra, Test, SparseArrays
+
+    # Regression: the kept (non-PSD) components of a decomposed bundle and
+    # the unselected constraints must evaluate the ORIGINAL variable slice
+    # y[1:n0], never the auxiliary clique variables.
+    P(x) = [x[1] 0.25 0.0 0.0; 0.25 x[2] 0.25 0.0; 0.0 0.25 x[1] 0.25; 0.0 0.0 0.25 x[2]]
+    mc = Model(x -> (x[1] - 1)^2 + (x[2] - 1)^2)
+    addvar!(mc, [0.0, 0.0], [5.0, 5.0]; init=[2.0, 2.0])
+    add_set_constraint!(
+        mc,
+        x -> (sum(x) - 1.0, P(x)),
+        SetProduct(LessThan(0.0), PSDCone(4));
+        flags=[:chordal],
+    )
+    vmc, x0, _ = NonconvexCore.tovecmodel(mc, [2.0, 2.0])
+    pat = sparse(P(x0) .!= 0)
+    dm, d0, _ = chordal_transform(vmc, [pat]; x0=vmc.init)
+    # The transformed point carries auxiliary variables beyond the originals.
+    @test length(d0) > 2
+    # The volume component (kept, first constraint's LessThan part) must
+    # evaluate sum(y[1:2]) - 1 of the ORIGINAL variables only: at d0 it
+    # equals the original bundle's first component at d0[1:2].
+    cvol = dm.set_constraints.fs[end]
+    @test cvol.set isa LessThan
+    @test NonconvexCore.set_value(cvol, d0)[1] ≈ sum(d0[1:2]) - 1.0
+    # Perturbing the auxiliary variables must not move the kept component.
+    d1 = copy(d0)
+    d1[3:end] .+= 10.0
+    @test NonconvexCore.set_value(cvol, d1)[1] ≈ NonconvexCore.set_value(cvol, d0)[1]
+    # Unselected constraints pass through and also read the original slice.
+    dm_none, d0n, _ = chordal_transform(vmc, [pat]; x0=vmc.init, labels=[:other])
+    c_kept = dm_none.set_constraints.fs[1]
+    @test NonconvexCore.set_value(c_kept, d0n)[1] ≈ (sum(d0n[1:2]) - 1.0)
+    @test NonconvexCore.set_value(c_kept, d0n)[2] ≈ P(d0n[1:2])
+end
