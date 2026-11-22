@@ -381,7 +381,12 @@ chordal sparsity pattern is rewritten with the Fukuda conversion —
 one small PSD variable block per maximal clique of the chordal extension,
 coupled to the original matrix by linear equalities on the entries of the
 extension pattern (`P = Σₖ E(Cₖ)ᵀ Yₖ E(Cₖ)`, `Yₖ ⪰ 0`). The reformulation is
-equivalent to `P(x) ⪰ 0`.
+equivalent to `P(x) ⪰ 0`. The coupling is written in normalized units at
+the formulation level: the clique variables are the normalized
+decomposition `Ỹₖ = Yₖ/sc` with `sc = max |P(x0)[i, j]|`, coupled by
+`P(x)/sc = Σₖ E(Cₖ)ᵀ Ỹₖ E(Cₖ)`, `Ỹₖ ⪰ 0` — an exact scaling, so the
+residuals and block variables stay O(1) and no solver-side scaling is
+needed.
 
 `patterns` is a vector with one sparsity pattern per PSD component of the
 model's set constraints, in order (an entry may be `nothing` to probe the
@@ -421,7 +426,11 @@ function chordal_transform(model::VecModel, patterns; x0=model.init, labels=noth
         end
     end
     # Auxiliary PSD blocks (new variables come after the original ones).
+    # The coupling normalization per component (formulation-level): the
+    # reference magnitude of P at x0, so the clique variables and the
+    # coupling residuals are O(1) regardless of the matrix scale.
     block_ranges = UnitRange{Int}[]
+    coupling_scales = Float64[]
     cliques_per = Vector{Vector{Int}}[]
     block_inits = Float64[]
     block_lbs = Float64[]
@@ -457,6 +466,8 @@ function chordal_transform(model::VecModel, patterns; x0=model.init, labels=noth
             )
         end
         push!(cliques_per, cliques)
+        sc = maximum(abs, P0)
+        push!(coupling_scales, isfinite(sc) && sc > 0 ? sc : 1.0)
         for C in cliques
             sz = length(C)
             r = (off + 1):(off + sz ^ 2)
@@ -484,7 +495,7 @@ function chordal_transform(model::VecModel, patterns; x0=model.init, labels=noth
         cliques = cliques_per[ci]
         ranges = block_ranges[((ci - 1) * length(cliques) + 1):(ci * length(cliques))]
         entries = _coupling_entries(cliques, s.dim)
-        fun = _coupling_fun(c, k, n0, cliques, ranges, entries, s.dim)
+        fun = _coupling_fun(c, k, n0, cliques, ranges, entries, s.dim, coupling_scales[ci])
         push!(
             set_cs,
             FunctionInSet(fun, NonconvexCore.EqualTo(zeros(length(entries))), c.flags),
@@ -561,9 +572,13 @@ function _coupling_entries(cliques, n::Int)
     return [(i, j) for j in 1:n for i in 1:j if compl[i, j]]
 end
 
-# The coupling residual P - ΣEᵀYE on the extension-pattern entries: the
-# bundle is evaluated once, the clique blocks are read from y.
-function _coupling_fun(c::FunctionInSet, k::Int, n0::Int, cliques, ranges, entries, n::Int)
+# The normalized coupling residual P/sc - ΣEᵀỸE on the extension-pattern
+# entries (formulation-level scaling): the bundle is evaluated once, the
+# clique blocks (the normalized decomposition variables Ỹ = Y/sc) are read
+# from y. The residuals stay O(1) for matrix scales of any magnitude.
+function _coupling_fun(
+    c::FunctionInSet, k::Int, n0::Int, cliques, ranges, entries, n::Int, sc::Float64
+)
     return function (y)
         P = NonconvexCore.set_value(c, y[1:n0])[k]
         A = assemble_chordal(
@@ -571,7 +586,7 @@ function _coupling_fun(c::FunctionInSet, k::Int, n0::Int, cliques, ranges, entri
             cliques,
             n,
         )
-        return [P[i, j] - A[i, j] for (i, j) in entries]
+        return [P[i, j] / sc - A[i, j] for (i, j) in entries]
     end
 end
 
