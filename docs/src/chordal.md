@@ -73,3 +73,22 @@ dm = block_relaxation(vecmodel, element_blocks(dh))
 # dm enforces (K(x) + λ̄Kσ(x))[C, C] ⪰ 0 on every element block C
 ```
 
+
+### Chordal completion projection
+
+[`chordal_projection`](@ref) completes a symmetric matrix to the closest
+PSD matrix on a chordal pattern — the fixed-point iteration of
+Grone–Johnson–Sá–Wolkowicz — with an implicit (fixed-point) adjoint:
+
+```julia
+using NonconvexSemidefinite, LinearAlgebra
+
+cliques = [[1, 2], [2, 3]]             # maximal cliques of a tridiagonal graph
+P = [2.0 1.0 0.0; 1.0 2.0 1.0; 0.0 1.0 2.0]
+A = chordal_projection(P, cliques)     # PSD, and A ≈ P (P is already PSD)
+minimum(eigvals(Symmetric(A)))         # ≥ 0
+
+# reverse-mode AD through the projection (implicit adjoint):
+using Zygote
+grad = Zygote.gradient(P -> tr(chordal_projection(P, cliques)), P)[1]
+```
