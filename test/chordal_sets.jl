@@ -404,3 +404,11 @@ end
     @test NonconvexCore.set_value(c_kept, d0n)[1] ≈ (sum(d0n[1:2]) - 1.0)
     @test NonconvexCore.set_value(c_kept, d0n)[2] ≈ P(d0n[1:2])
 end
+
+@testitem "PSD-component detection" begin
+    using NonconvexSemidefinite, NonconvexCore, Test
+    @test has_psd_component(PSDCone(3))
+    @test has_psd_component(SetProduct(LessThan(0.0), PSDCone(4)))
+    @test !has_psd_component(LessThan(0.0))
+    @test !has_psd_component(SetProduct(LessThan(0.0), Nonnegatives(3)))
+end
