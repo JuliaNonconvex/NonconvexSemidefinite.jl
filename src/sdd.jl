@@ -119,13 +119,16 @@ function sdd_partition(
 end
 
 # The SDD bundle of a matrix function: the subdomain interior blocks and
-# the interface Schur complement, from one evaluation of P.
+# the interface Schur complement, from one evaluation of P. The interior
+# blocks go through `partition_blocks`, whose analytic rrule scatters the
+# block cotangents back to a sparse cotangent of P — so the partition of
+# the matrix into its small submatrices is one rule, not a traced loop.
 function _sdd_bundle(Pfun, partition::SDDPartition)
     I = partition.interiors
     Γ = partition.interface
     return function (x)
         P = Pfun(x)
-        blocks = [P[I_k, I_k] for I_k in I]
+        blocks = partition_blocks(P, I)
         nΓ = length(Γ)
         if nΓ == 0
             return Tuple(blocks)
