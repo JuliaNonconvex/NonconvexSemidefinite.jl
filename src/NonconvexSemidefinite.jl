@@ -16,8 +16,10 @@ export SDDPartition, sdd_partition, sdd_transform, nsubdomains
 export ArrowSubdomain, ArrowIntersection, arrow_decompose
 export SDCuttingPlaneAlg, SDCuttingPlaneOptions, SDCuttingPlaneResult
 export PSDMatrixView, add_psd_variable!
+export ks_aggregate
 
 using ChainRulesCore, Reexport, Parameters
+import IterativeSolvers: lobpcg
 @reexport using NonconvexCore
 using NonconvexCore: VecModel, AbstractOptimizer, AbstractModel
 using NonconvexCore:
@@ -89,6 +91,7 @@ function ChainRulesCore.rrule(
 end
 
 include("projection.jl")
+include("ks.jl")
 include("chordal.jl")
 include("completion.jl")
 include("modeling.jl")
