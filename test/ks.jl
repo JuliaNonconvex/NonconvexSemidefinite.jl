@@ -2,20 +2,19 @@
     using NonconvexSemidefinite, LinearAlgebra, Random, Zygote, SparseArrays
     Random.seed!(1)
     n = 6
-    A0 = Matrix(Symmetric(randn(n, n)' * randn(n, n)))
+    A0 = Matrix(Symmetric(-(randn(n, n)' * randn(n, n))))  # negative definite
     B0 = Matrix(Diagonal(rand(n) .+ 1.0))
 
     # deterministic dense eigensolver (B-normalized vectors), for FD
-    dense_eigs(A, B, k, which) = begin
+    dense_eigs(A, B, k) = begin
         F = eigen(Symmetric(Matrix(A)), Symmetric(Matrix(B)))
-        perm = sortperm(F.values; rev=(which === :upper))
-        idx = perm[1:min(k, length(perm))]
-        λs = F.values[idx]
+        perm = sortperm(F.values)[1:min(k, length(F.values))]
+        λs = F.values[perm]
         Xs = [
             begin
                 v = vec(F.vectors[:, j])
                 v ./ sqrt(v' * Matrix(B) * v)
-            end for j in idx
+            end for j in perm
         ]
         return λs, Xs
     end
@@ -32,31 +31,45 @@
         return G
     end
 
-    for which in (:lower, :upper, :ratio)
-        f(A) = ks_aggregate(A, B0, 2, 10.0; which=which, eigsolver=dense_eigs)
+    for step in (0.0, 0.25, 0.5, 1.0)
+        f(A) = ks_aggregate(A, B0, 2, 10.0; step=step, eigsolver=dense_eigs)
         g = Zygote.gradient(f, A0)[1]
         g_fd = fd_grad(f, A0)
         @test norm(g - g_fd) / max(norm(g_fd), 1) < 1e-5
     end
+    # the ratio mode
+    f(A) = ks_aggregate(A, B0, 2, 10.0; ratio=true, eigsolver=dense_eigs)
+    g = Zygote.gradient(f, A0)[1]
+    g_fd = fd_grad(f, A0)
+    @test norm(g - g_fd) / max(norm(g_fd), 1) < 1e-5
 
-    # sanity of the aggregates themselves
-    @test ks_aggregate(A0, B0, 2, 10.0; which=:lower, eigsolver=dense_eigs) <=
-          ks_aggregate(A0, B0, 2, 10.0; which=:upper, eigsolver=dense_eigs)
+    # one-sided bounds on the minimum (the eigenvalues are negative here):
+    # lower ≤ min(λ) ≤ upper, and the step walks between them
+    λs_dense = dense_eigs(A0, B0, 2)[1]
+    v0 = ks_aggregate(A0, B0, 2, 10.0; step=0.0, eigsolver=dense_eigs)
+    v1 = ks_aggregate(A0, B0, 2, 10.0; step=1.0, eigsolver=dense_eigs)
+    vh = ks_aggregate(A0, B0, 2, 10.0; step=0.5, eigsolver=dense_eigs)
+    @test v0 <= minimum(λs_dense) <= v1
+    @test v0 <= vh <= v1
 
     # default LOBPCG path: value agrees with the dense reference, gradient
     # is finite, and the sparse-cotangent path builds for sparse A
     nbig = 40
-    A1 = Matrix(Symmetric(randn(nbig, nbig)' * randn(nbig, nbig)))
+    A1 = Matrix(Symmetric(-(randn(nbig, nbig)' * randn(nbig, nbig))))
     B1 = Matrix(Diagonal(rand(nbig) .+ 1.0))
-    v_lob = ks_aggregate(A1, B1, 2, 10.0; which=:lower)
-    v_dense = ks_aggregate(A1, B1, 2, 10.0; which=:lower, eigsolver=dense_eigs)
-    @test abs(v_lob - v_dense) < 1e-3
-    g_lob = Zygote.gradient(A -> ks_aggregate(A, B1, 2, 10.0; which=:lower), A1)[1]
+    for (step, ratio) in ((0.0, false), (0.5, false), (1.0, false), (0.0, true))
+        v_lob = ks_aggregate(A1, B1, 2, 10.0; step=step, ratio=ratio)
+        v_dense = ks_aggregate(A1, B1, 2, 10.0; step=step, ratio=ratio,
+                               eigsolver=dense_eigs)
+        @test abs(v_lob - v_dense) < 1e-3
+    end
+    g_lob = Zygote.gradient(
+        A -> ks_aggregate(A, B1, 2, 10.0; step=0.5), A1
+    )[1]
     @test all(isfinite, g_lob)
 
-    As = sparse(A1)
     g_sp = Zygote.gradient(
-        A -> ks_aggregate(sparse(A), B1, 2, 10.0; which=:upper), A1
+        A -> ks_aggregate(sparse(A), B1, 2, 10.0; step=0.5), A1
     )[1]
     @test all(isfinite, g_sp)
 end

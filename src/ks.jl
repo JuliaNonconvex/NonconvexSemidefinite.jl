@@ -1,25 +1,29 @@
-# Kreisselmeier–Steinhauser aggregation of the algebraically lowest /
-# highest generalized eigenvalues of a symmetric pencil A·x = λ·B·x, with
-# an analytic reverse rule. The eigenpairs come from LOBPCG by default.
+# Kreisselmeier–Steinhauser aggregation of the algebraically smallest
+# generalized eigenvalues of a symmetric pencil A·x = λ·B·x, with an
+# analytic reverse rule. The eigenpairs come from LOBPCG by default.
 
 """
-    ks_aggregate(A, B, k, ρ; which=:lower, eigsolver=nothing)
+    ks_aggregate(A, B, k, ρ; step=0.0, ratio=false, eigsolver=nothing)
 
-The Kreisselmeier–Steinhauser aggregation of the `k` algebraically lowest
-or highest generalized eigenvalues `λ₁ ≤ … ≤ λₖ` of the symmetric pencil
-`A·x = λ·B·x` (`A`, `B` symmetric, `B` positive definite):
+The Kreisselmeier–Steinhauser approximation of the minimum of the `k`
+algebraically smallest generalized eigenvalues `λ₁ ≤ … ≤ λₖ` of the
+symmetric pencil `A·x = λ·B·x` (`A`, `B` symmetric, `B` positive
+definite). Two one-sided logsumexp aggregates bound the minimum — the
+eigenvalues may be negative (e.g. the ν's of the buckling pencil):
 
-- `which = :lower`: `KS = -(1/ρ)·log(Σᵢ exp(-ρλᵢ))` — a smooth
-  under-approximation of `λ₁` (KS ≤ λ₁, KS → λ₁ as ρ → ∞); the
-  lower-bound aggregate.
-- `which = :upper`: `KS = (1/ρ)·log(Σᵢ exp(ρλᵢ))` — the upper-bound
-  aggregate, a smooth over-approximation of `λₖ`.
-- `which = :ratio`: `KS = upper − lower ≈ log(λₖ/λ₁)` — the log-ratio of
-  the two aggregates, a surrogate for the spectral condition number.
+- the lower bound on min (default, `step = 0`):
+  `KS = -(1/ρ)·log(Σᵢ exp(-ρλᵢ))` — KS ≤ λ₁, KS → λ₁ as ρ → ∞;
+- the negative upper bound on the negative eigenvalues (`step = 1`):
+  `KS = -(1/ρ)·log(Σᵢ exp(ρλᵢ))` — KS ≥ λ₁ whenever the λᵢ are negative;
+- `0 < step < 1`: the convex combination
+  `KS = (1-step)·lower + step·upper` — a step between the lower and
+  upper bounds on the minimum;
+- `ratio = true`: `KS = upper − lower = (1/ρ)·log(Σexp(-ρλᵢ)/Σexp(ρλᵢ))`,
+  a surrogate for the spread of the smallest eigenvalues.
 
 The reverse rule is the closed-form eigenvalue sensitivity: with the
 B-normalized eigenvectors `vᵢ` (`vᵢᵀBvᵢ = 1`), `dλᵢ = vᵢᵀ(dA − λᵢdB)vᵢ`,
-weighted by the softmax `wᵢ` of `±ρλᵢ` (for `:ratio`, `wᵢ = wᵢ⁺ − wᵢ⁻`);
+weighted per mode by `wᵢ = (1-step)·softmax(-ρλ)ᵢ − step·softmax(ρλ)ᵢ`;
 the cotangents are
 
     ΔA = Σᵢ Δ·wᵢ·vᵢvᵢᵀ,     ΔB = Σᵢ Δ·wᵢ·(−λᵢ)·vᵢvᵢᵀ,
@@ -29,62 +33,59 @@ cotangents are populated over the full vector space (O(k·n²)), so the
 matrix-level rule targets small-to-moderate problems; large sparse
 pencils should compose through element-level rules instead.
 
-The eigenpairs come from LOBPCG by default — `lobpcg(A, B, largest, X0)`
-with B-orthonormal vectors, `largest` per `which` — and can be replaced
-with any `eigsolver(A, B, k, which) -> (λs, vectors)`, e.g. a dense
+The eigenpairs come from LOBPCG by default — `lobpcg(A, B, false, X0)`
+for the smallest generalized eigenvalues, B-orthonormal vectors — and can
+be replaced with any `eigsolver(A, B, k) -> (λs, vectors)`, e.g. a dense
 `eigen` for testing.
 """
 function ks_aggregate(
-    A, B, k::Int, ρ; which::Symbol=:lower, eigsolver=nothing
+    A, B, k::Int, ρ; step::Real=0.0, ratio::Bool=false, eigsolver=nothing
 )
-    which in (:lower, :upper, :ratio) || throw(
-        ArgumentError("which must be :lower, :upper or :ratio, got $(which)"),
-    )
+    0 <= step <= 1 || throw(ArgumentError("step must be in [0, 1], got $(step)"))
     es = eigsolver === nothing ? _ks_lobpcg : eigsolver
     # the pencil is symmetric by definition: symmetrize explicitly so the
     # cotangent Σwᵢvᵢvᵢᵀ is the true derivative w.r.t. the full-matrix
     # argument (eigen(Symmetric(A)) alone would ignore the lower triangle).
     As = (A + A') / 2
     Bs = (B + B') / 2
-    λs, _ = es(As, Bs, k, which)
-    return _ks_value(λs, ρ, which)
+    λs, _ = es(As, Bs, k)
+    return _ks_value(λs, ρ, step, ratio)
 end
 
-_ks_value(λs, ρ, ::Val{:lower}) = -(1 / ρ) * log(sum(exp(-ρ * λ) for λ in λs))
-_ks_value(λs, ρ, ::Val{:upper}) = (1 / ρ) * log(sum(exp(ρ * λ) for λ in λs))
-_ks_value(λs, ρ, ::Val{:ratio}) =
-    _ks_value(λs, ρ, Val(:upper)) - _ks_value(λs, ρ, Val(:lower))
-_ks_value(λs, ρ, which::Symbol) = _ks_value(λs, ρ, Val(which))
+# the two one-sided logsumexp aggregates of the minimum
+_ks_lower(λs, ρ) =
+    isempty(λs) ? -Inf : -(1 / ρ) * log(sum(exp(-ρ * λ) for λ in λs))
+_ks_upper(λs, ρ) =
+    isempty(λs) ? Inf : -(1 / ρ) * log(sum(exp(ρ * λ) for λ in λs))
 
-# default eigensolver: LOBPCG on the generalized pencil (A, B)
-function _ks_lobpcg(A, B, k::Int, which::Symbol)
+function _ks_value(λs, ρ, step, ratio)
+    if ratio
+        return _ks_upper(λs, ρ) - _ks_lower(λs, ρ)
+    end
+    return (1 - step) * _ks_lower(λs, ρ) + step * _ks_upper(λs, ρ)
+end
+
+# default eigensolver: LOBPCG for the algebraically smallest eigenvalues
+function _ks_lobpcg(A, B, k::Int)
     n = size(A, 1)
-    largest = which === :upper
     X0 = rand(n, min(k + 2, n))
-    res = lobpcg(A, B, largest, X0; tol=1.0e-6, maxiter=400)
+    res = lobpcg(A, B, false, X0; tol=1.0e-6, maxiter=400)
     nk = min(k, length(res.λ))
-    λs = collect(Float64, res.λ[1:nk])
-    Xs = [vec(res.X[:, j]) for j in 1:nk]
-    return λs, Xs
+    return collect(Float64, res.λ[1:nk]), [vec(res.X[:, j]) for j in 1:nk]
 end
 
 # the KS softmax weights per mode
-function _ks_weights(λs, ρ, which::Symbol)
-    if which === :lower
-        w = exp.(-ρ .* λs)
-        w ./= sum(w)
-        return w
-    elseif which === :upper
-        w = exp.(ρ .* λs)
-        w ./= sum(w)
-        return w
-    else
-        wu = exp.(ρ .* λs)
-        wu ./= sum(wu)
-        wl = exp.(-ρ .* λs)
-        wl ./= sum(wl)
-        return wu .- wl
+function _ks_weights(λs, ρ, step, ratio)
+    if ratio
+        # ratio = upper − lower; d(upper)/dλᵢ = −softmax(ρλ)ᵢ and
+        # d(lower)/dλᵢ = +softmax(−ρλ)ᵢ
+        wu = exp.(ρ .* λs); wu ./= sum(wu)
+        wl = exp.(-ρ .* λs); wl ./= sum(wl)
+        return .-(wl .+ wu)
     end
+    wl = exp.(-ρ .* λs); wl ./= sum(wl)
+    wu = exp.(ρ .* λs); wu ./= sum(wu)
+    return (1 - step) .* wl .- step .* wu
 end
 
 # Σᵢ cᵢ·vᵢvᵢᵀ as a cotangent matching P's storage (sparse via COO when P
@@ -116,13 +117,14 @@ end
 
 function ChainRulesCore.rrule(
     ::typeof(ks_aggregate), A, B, k::Int, ρ;
-    which::Symbol=:lower, eigsolver=nothing
+    step::Real=0.0, ratio::Bool=false, eigsolver=nothing
 )
+    0 <= step <= 1 || throw(ArgumentError("step must be in [0, 1], got $(step)"))
     es = eigsolver === nothing ? _ks_lobpcg : eigsolver
     As = (A + A') / 2
     Bs = (B + B') / 2
-    λs, Xs = es(As, Bs, k, which)
-    val = _ks_value(λs, ρ, which)
+    λs, Xs = es(As, Bs, k)
+    val = _ks_value(λs, ρ, step, ratio)
     function ks_aggregate_pb(Δ)
         Δ = ChainRulesCore.unthunk(Δ)
         if Δ isa ChainRulesCore.AbstractZero || isempty(λs)
@@ -131,7 +133,7 @@ function ChainRulesCore.rrule(
             ΔB = B isa SparseMatrixCSC ? spzeros(eltype(B), size(B)...) :
                  zeros(eltype(B), size(B))
         else
-            w = _ks_weights(λs, ρ, which)
+            w = _ks_weights(λs, ρ, step, ratio)
             ΔA = _outer_cotangent(A, Δ, w, ones(length(λs)), Xs)
             ΔB = _outer_cotangent(B, Δ, w, -λs, Xs)
         end
