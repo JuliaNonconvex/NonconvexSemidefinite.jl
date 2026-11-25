@@ -81,6 +81,9 @@
 
     # Global assembly: K(x) = Σ_e x_e K_e (the fixed dofs are eliminated).
     # Mutation-free (comprehensions + sums) so Zygote can differentiate.
+    # `l2g` does not depend on the design: precompute it once, so the
+    # differentiated assemblers never trace its splatted `vcat` (Zygote
+    # rejects the push!-based lowering of `vcat(args...)`).
     function l2g(e)
         i = (e - 1) ÷ 4 + 1
         j = (e - 1) % 4 + 1
@@ -91,11 +94,12 @@
             ]...,
         )
     end
+    L2G = [l2g(e) for e in 1:16]
     function assemble_K(x)
         parts = [
             [
                 sum(
-                    x[e] * K0[a, b] * (l2g(e)[a] == r && l2g(e)[b] == c) for
+                    x[e] * K0[a, b] * (L2G[e][a] == r && L2G[e][b] == c) for
                     a in 1:8, b in 1:8
                 ) for r in 1:40, c in 1:40
             ] for e in 1:16
@@ -146,7 +150,7 @@
         parts = [
             [
                 sum(
-                    x[e] * K0[a, b] * (l2g(e)[a] == Ik[p] && l2g(e)[b] == Ik[q]) for
+                    x[e] * K0[a, b] * (L2G[e][a] == Ik[p] && L2G[e][b] == Ik[q]) for
                     a in 1:8, b in 1:8
                 ) for p in 1:length(Ik), q in 1:length(Ik)
             ] for e in Dk
