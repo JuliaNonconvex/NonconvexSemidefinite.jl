@@ -88,9 +88,7 @@ without traced per-block loops.
 function partition_blocks(P::AbstractMatrix, blocks)
     return [P[I, I] for I in blocks]
 end
-function ChainRulesCore.rrule(
-    ::typeof(partition_blocks), P::AbstractMatrix, blocks
-)
+function ChainRulesCore.rrule(::typeof(partition_blocks), P::AbstractMatrix, blocks)
     out = partition_blocks(P, blocks)
     function partition_blocks_pb(Δout)
         Δout = ChainRulesCore.unthunk(Δout)
@@ -146,15 +144,11 @@ function project_psd_batch(A::AbstractArray{T,3}) where {T}
     end
     return Z
 end
-function ChainRulesCore.rrule(
-    ::typeof(project_psd_batch), A::AbstractArray{T,3}
-) where {T}
+function ChainRulesCore.rrule(::typeof(project_psd_batch), A::AbstractArray{T,3}) where {T}
     Z = similar(A)
     pbs = Vector{Any}(undef, size(A, 3))
     for k in axes(A, 3)
-        Z[:, :, k], pbs[k] = ChainRulesCore.rrule(
-            project_psd, @view A[:, :, k]
-        )
+        Z[:, :, k], pbs[k] = ChainRulesCore.rrule(project_psd, @view A[:, :, k])
     end
     function project_psd_batch_pb(ΔZ)
         ΔZ = ChainRulesCore.unthunk(ΔZ)

@@ -24,8 +24,10 @@
     function fd_grad(f, A; h=1e-6)
         G = similar(A)
         for i in axes(A, 1), j in axes(A, 2)
-            Ap = copy(A); Ap[i, j] += h
-            Am = copy(A); Am[i, j] -= h
+            Ap = copy(A)
+            Ap[i, j] += h
+            Am = copy(A)
+            Am[i, j] -= h
             G[i, j] = (f(Ap) - f(Am)) / (2h)
         end
         return G
@@ -59,17 +61,14 @@
     B1 = Matrix(Diagonal(rand(nbig) .+ 1.0))
     for (step, ratio) in ((0.0, false), (0.5, false), (1.0, false), (0.0, true))
         v_lob = ks_aggregate(A1, B1, 2, 10.0; step=step, ratio=ratio)
-        v_dense = ks_aggregate(A1, B1, 2, 10.0; step=step, ratio=ratio,
-                               eigsolver=dense_eigs)
+        v_dense = ks_aggregate(
+            A1, B1, 2, 10.0; step=step, ratio=ratio, eigsolver=dense_eigs
+        )
         @test abs(v_lob - v_dense) < 1e-3
     end
-    g_lob = Zygote.gradient(
-        A -> ks_aggregate(A, B1, 2, 10.0; step=0.5), A1
-    )[1]
+    g_lob = Zygote.gradient(A -> ks_aggregate(A, B1, 2, 10.0; step=0.5), A1)[1]
     @test all(isfinite, g_lob)
 
-    g_sp = Zygote.gradient(
-        A -> ks_aggregate(sparse(A), B1, 2, 10.0; step=0.5), A1
-    )[1]
+    g_sp = Zygote.gradient(A -> ks_aggregate(sparse(A), B1, 2, 10.0; step=0.5), A1)[1]
     @test all(isfinite, g_sp)
 end

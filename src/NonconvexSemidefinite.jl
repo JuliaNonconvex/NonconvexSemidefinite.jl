@@ -3,8 +3,13 @@ module NonconvexSemidefinite
 export SDPBarrierOptions, SDPBarrierAlg, decompress_symmetric
 export BarrierAlg, BarrierOptions, BarrierSelection, BarrierResult
 export SDPQuadAlg, SDPQuadOptions, SDPQuadResult
-export project_psd, project_psd_neg, psd_infeasibility,
-       project_psd_batch, psd_neg_eig, psd_infeasibility_batch, partition_blocks
+export project_psd,
+    project_psd_neg,
+    psd_infeasibility,
+    project_psd_batch,
+    psd_neg_eig,
+    psd_infeasibility_batch,
+    partition_blocks
 export symmetric_pattern, chordal_extension, aggregate_sparsity, chordal_decompose
 export AbstractChordalAlgorithm, AMDAlg, MCSAlg, MFAlg, METISAlg, BTAlg
 export is_chordal, chordal_transform, assemble_chordal

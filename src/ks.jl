@@ -38,9 +38,7 @@ for the smallest generalized eigenvalues, B-orthonormal vectors — and can
 be replaced with any `eigsolver(A, B, k) -> (λs, vectors)`, e.g. a dense
 `eigen` for testing.
 """
-function ks_aggregate(
-    A, B, k::Int, ρ; step::Real=0.0, ratio::Bool=false, eigsolver=nothing
-)
+function ks_aggregate(A, B, k::Int, ρ; step::Real=0.0, ratio::Bool=false, eigsolver=nothing)
     0 <= step <= 1 || throw(ArgumentError("step must be in [0, 1], got $(step)"))
     es = eigsolver === nothing ? _ks_lobpcg : eigsolver
     # the pencil is symmetric by definition: symmetrize explicitly so the
@@ -53,10 +51,8 @@ function ks_aggregate(
 end
 
 # the two one-sided logsumexp aggregates of the minimum
-_ks_lower(λs, ρ) =
-    isempty(λs) ? -Inf : -(1 / ρ) * log(sum(exp(-ρ * λ) for λ in λs))
-_ks_upper(λs, ρ) =
-    isempty(λs) ? Inf : -(1 / ρ) * log(sum(exp(ρ * λ) for λ in λs))
+_ks_lower(λs, ρ) = isempty(λs) ? -Inf : -(1 / ρ) * log(sum(exp(-ρ * λ) for λ in λs))
+_ks_upper(λs, ρ) = isempty(λs) ? Inf : -(1 / ρ) * log(sum(exp(ρ * λ) for λ in λs))
 
 function _ks_value(λs, ρ, step, ratio)
     if ratio
@@ -79,12 +75,16 @@ function _ks_weights(λs, ρ, step, ratio)
     if ratio
         # ratio = upper − lower; d(upper)/dλᵢ = −softmax(ρλ)ᵢ and
         # d(lower)/dλᵢ = +softmax(−ρλ)ᵢ
-        wu = exp.(ρ .* λs); wu ./= sum(wu)
-        wl = exp.(-ρ .* λs); wl ./= sum(wl)
+        wu = exp.(ρ .* λs)
+        wu ./= sum(wu)
+        wl = exp.(-ρ .* λs)
+        wl ./= sum(wl)
         return .-(wl .+ wu)
     end
-    wl = exp.(-ρ .* λs); wl ./= sum(wl)
-    wu = exp.(ρ .* λs); wu ./= sum(wu)
+    wl = exp.(-ρ .* λs)
+    wl ./= sum(wl)
+    wu = exp.(ρ .* λs)
+    wu ./= sum(wu)
     return (1 - step) .* wl .- step .* wu
 end
 
@@ -116,8 +116,14 @@ function _outer_cotangent(P, Δ, w, coeffs, Xs)
 end
 
 function ChainRulesCore.rrule(
-    ::typeof(ks_aggregate), A, B, k::Int, ρ;
-    step::Real=0.0, ratio::Bool=false, eigsolver=nothing
+    ::typeof(ks_aggregate),
+    A,
+    B,
+    k::Int,
+    ρ;
+    step::Real=0.0,
+    ratio::Bool=false,
+    eigsolver=nothing,
 )
     0 <= step <= 1 || throw(ArgumentError("step must be in [0, 1], got $(step)"))
     es = eigsolver === nothing ? _ks_lobpcg : eigsolver
@@ -128,10 +134,16 @@ function ChainRulesCore.rrule(
     function ks_aggregate_pb(Δ)
         Δ = ChainRulesCore.unthunk(Δ)
         if Δ isa ChainRulesCore.AbstractZero || isempty(λs)
-            ΔA = A isa SparseMatrixCSC ? spzeros(eltype(A), size(A)...) :
-                 zeros(eltype(A), size(A))
-            ΔB = B isa SparseMatrixCSC ? spzeros(eltype(B), size(B)...) :
-                 zeros(eltype(B), size(B))
+            ΔA = if A isa SparseMatrixCSC
+                spzeros(eltype(A), size(A)...)
+            else
+                zeros(eltype(A), size(A))
+            end
+            ΔB = if B isa SparseMatrixCSC
+                spzeros(eltype(B), size(B)...)
+            else
+                zeros(eltype(B), size(B))
+            end
         else
             w = _ks_weights(λs, ρ, step, ratio)
             ΔA = _outer_cotangent(A, Δ, w, ones(length(λs)), Xs)
