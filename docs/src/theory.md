@@ -143,3 +143,58 @@ objective is invariant under orthogonal transformations $L \mapsto LQ$, so
 the factor problem has symmetries and possibly spurious stationary points.
 The diagonal floor keeps the full-rank factor strictly interior; for
 nonconvex objectives a multistart over factors is recommended.
+
+## Chordal completion projection
+
+The exact chordal transforms require a PSD matrix with a prescribed
+sparsity pattern. [`chordal_projection`](@ref) computes the closest PSD
+matrix to a given (pattern-prescribed) symmetric matrix by the fixed-point
+iteration of Grone–Johnson–Sá–Wolkowicz: for every maximal clique $C_k$ of
+the chordal extension,
+
+$$V_k^+ = \Pi_{\mathbb{S}_+^{|C_k|}}\!\big(E_k P E_k^\top\big), \qquad
+P^+ = \sum_k E_k^\top V_k^+ E_k,$$
+
+iterated until the residuals stagnate. The iterate converges to the unique
+PSD matrix that agrees with the original on the pattern — the matrix
+completion of the positive semidefinite partial matrix. The reverse rule
+uses the *implicit function theorem* on the fixed-point map rather than
+back-propagating through the iterations: the adjoint solves a small
+per-clique linear system whose matrix is the derivative of the fixed-point
+map, giving exact machine-precision adjoints at one iteration's cost
+independent of the forward iteration count.
+
+## The cutting-plane solver
+
+[`SDCuttingPlaneAlg`](@ref) replaces the semidefinite constraint
+$P(x) \succeq 0$ by a growing set of *scalar* cuts. At the current
+subproblem solution $\bar x$ with $P(\bar x) \not\succeq 0$, let
+$v$ be the eigenvector of the most-negative eigenvalue of $P(\bar x)$.
+The linearized constraint
+
+$$v^\top P(x)\, v \ge 0$$
+
+is valid for every $x$ with $P(x) \succeq 0$ and violated at $\bar x$, so
+appending it strictly separates the current iterate. The outer loop
+alternates between solving the (classical) NLP subproblem with the
+accumulated cuts and appending the most-violated cut, until $P(x) \succeq 0$
+holds. Each cut is one ordinary inequality constraint, so the subproblems
+stay inside the standard NLP machinery of the Nonconvex ecosystem. The
+method is exact in the limit (the cuts are tangent outer approximations of
+the cone) but can be slow — each cut removes only one direction — and it
+zigzags when several eigenvalues of $P$ are nearly equal. It is best suited
+to problems where the semidefinite constraint is only mildly violated
+along the optimization path.
+
+## Kočvara's structured domain decomposition
+
+[`sdd_partition`](@ref) and [`sdd_transform`](@ref) implement the Schur-complement
+decomposition of Kočvara (2021): partition the variables of the SDP
+argument into subdomain blocks and their interface, eliminate the
+subdomain blocks by the Schur complement, and leave a single PSD
+constraint on the (much smaller) interface block. The equivalence is exact
+whenever the eliminated subdomain blocks are positive definite. The arrow
+decomposition [`arrow_decompose`](@ref) covers the special pattern of one
+shared interface row/column coupled to independent diagonal blocks, where
+the same elimination is explicit and its exactness is Theorem 2.3 of the
+paper.

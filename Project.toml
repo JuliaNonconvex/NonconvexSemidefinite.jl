@@ -1,10 +1,13 @@
 name = "NonconvexSemidefinite"
 uuid = "9e21ff56-eb25-42d3-b86f-5b0612f555e7"
-version = "0.4.6"
+version = "0.5.0"
 authors = ["Mohamed Tarek <mohdibntarek@gmail.com> and contributors"]
 
 [deps]
+AMD = "14f7f29c-3bd6-536c-9a0b-7339e30b5a3e"
+Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NonconvexCore = "035190e5-69f1-488f-aaab-becca2889735"
 Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
@@ -13,10 +16,23 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
+[weakdeps]
+CliqueTrees = "60701a23-6482-424a-84db-faee86b9b1f8"
+Ferrite = "c061ca5d-56c9-439f-9c0e-210fe06d3992"
+
+[extensions]
+NonconvexSemidefiniteCliqueTreesExt = "CliqueTrees"
+NonconvexSemidefiniteFerriteExt = "Ferrite"
+
 [compat]
+AMD = "0.5"
+Arpack = "0.5"
 ChainRulesCore = "0.10, 1"
+IterativeSolvers = "0.9"
 ChainRulesTestUtils = "1"
+CliqueTrees = "1"
 Distributions = "0.25"
+Ferrite = "1"
 ForwardDiff = "0.10, 1"
 LinearAlgebra = "1"
 NonconvexCore = "2"

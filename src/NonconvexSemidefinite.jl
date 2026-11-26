@@ -3,11 +3,28 @@ module NonconvexSemidefinite
 export SDPBarrierOptions, SDPBarrierAlg, decompress_symmetric
 export BarrierAlg, BarrierOptions, BarrierSelection, BarrierResult
 export SDPQuadAlg, SDPQuadOptions, SDPQuadResult
-export project_psd, project_psd_neg, psd_infeasibility
+export project_psd,
+    project_psd_neg,
+    psd_infeasibility,
+    project_psd_batch,
+    psd_neg_eig,
+    psd_infeasibility_batch,
+    partition_blocks
 export symmetric_pattern, chordal_extension, aggregate_sparsity, chordal_decompose
+export AbstractChordalAlgorithm, AMDAlg, MCSAlg, MFAlg, METISAlg, BTAlg
+export is_chordal, chordal_transform, assemble_chordal
+export PSDCone, has_psd_component
+export block_relaxation
+export chordal_projection
+export element_blocks
+export SDDPartition, sdd_partition, sdd_transform, nsubdomains
+export ArrowSubdomain, ArrowIntersection, arrow_decompose
+export SDCuttingPlaneAlg, SDCuttingPlaneOptions, SDCuttingPlaneResult
 export PSDMatrixView, add_psd_variable!
+export ks_aggregate
 
 using ChainRulesCore, Reexport, Parameters
+import IterativeSolvers: lobpcg
 @reexport using NonconvexCore
 using NonconvexCore: VecModel, AbstractOptimizer, AbstractModel
 using NonconvexCore:
@@ -79,10 +96,14 @@ function ChainRulesCore.rrule(
 end
 
 include("projection.jl")
+include("ks.jl")
 include("chordal.jl")
+include("completion.jl")
 include("modeling.jl")
 
 include("barrier.jl")
 include("reparam.jl")
+include("cutting_plane.jl")
+include("sdd.jl")
 
 end

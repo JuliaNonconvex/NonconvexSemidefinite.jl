@@ -3,6 +3,26 @@
 ## 0.4.6
 
 - Docs: the logo now appears only in the sidebar, not in the page body.
+
+## 0.5.0
+
+- The semidefinite cone `PSDCone` now lives in NonconvexCore (which defines
+  all constraint sets); NonconvexSemidefinite re-exports it and provides the
+  semidefinite algorithms.
+- Chordal decomposition rebuilt: `chordal_extension` (AMD and MCS orderings
+  built in, MF/METIS/BT via the optional CliqueTrees.jl extension),
+  `is_chordal`, `assemble_chordal` with an analytic rrule, and the exact
+  Fukuda-conversion `chordal_transform` (clique PSD variable blocks coupled
+  by pattern equalities). `chordal_decompose` remains as the clique-submatrix
+  form, now documented as a relaxation.
+- Kočvara's structured domain decomposition: `sdd_partition`/
+  `sdd_transform` (Schur complement on the subdomain interface, with a
+  Ferrite.jl extension for general meshes) and the arrow decomposition
+  `arrow_decompose` (Theorem 2.3 of Kočvara, Math. Program. 2021).
+- `SDCuttingPlaneAlg`: a cutting-plane solver for semidefinite constraints
+  using the iterative (ARPACK) eigensolver, with a `block_size` option.
+- Requires NonconvexCore 2.3 (the function-in-set framework).
+ (Chordal, SDD and cutting-plane algorithms for NonconvexCore 2.3 sets)
 ## 0.4.5
 
 - Docs: package-name section titles and left-aligned logos (no code changes).
