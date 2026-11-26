@@ -22,6 +22,18 @@ export ArrowSubdomain, ArrowIntersection, arrow_decompose
 export SDCuttingPlaneAlg, SDCuttingPlaneOptions, SDCuttingPlaneResult
 export PSDMatrixView, add_psd_variable!
 export ks_aggregate
+export PSDBarrierOracle,
+    psd_barrier_value, psd_barrier_grad!, psd_hess_dense!, psd_hess_prod!
+export logdet_estimate,
+    logdet_estimate_of,
+    slq_logdet,
+    chebyshev_logdet,
+    hutchpp_logdet,
+    rational_logdet,
+    taylor_logdet,
+    trace_integration_logdet,
+    lowrank_logdet,
+    lanczos_bounds
 
 using ChainRulesCore, Reexport, Parameters
 import IterativeSolvers: lobpcg
@@ -102,6 +114,8 @@ include("completion.jl")
 include("modeling.jl")
 
 include("barrier.jl")
+include("logdet_estimation.jl")
+include("ipm_oracles.jl")
 include("reparam.jl")
 include("cutting_plane.jl")
 include("sdd.jl")
