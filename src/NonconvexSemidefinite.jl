@@ -22,7 +22,8 @@ export ArrowSubdomain, ArrowIntersection, arrow_decompose
 export SDCuttingPlaneAlg, SDCuttingPlaneOptions, SDCuttingPlaneResult
 export PSDMatrixView, add_psd_variable!
 export ks_aggregate
-export PSDBarrierOracle, psd_barrier_value, psd_barrier_grad!, psd_hess_dense!, psd_hess_prod!
+export PSDBarrierOracle,
+    psd_barrier_value, psd_barrier_grad!, psd_hess_dense!, psd_hess_prod!
 export logdet_estimate,
     logdet_estimate_of,
     slq_logdet,

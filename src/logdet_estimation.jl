@@ -489,15 +489,32 @@ matrix-free methods:
 
 See the individual methods for their keyword arguments.
 """
+# Keyword arguments accepted by each estimator (the dispatcher forwards only
+# these, so e.g. `cg_tol` reaches the shifted-solve methods without breaking
+# the probe-only ones).
+const _LOGDet_ESTIMATE_KWARGS = (
+    :slq => (:lanczos_deg, :nprobes, :rng),
+    :chebyshev => (:deg, :nprobes, :lmin, :lmax, :rng),
+    :hutchpp => (:k, :lanczos_deg, :nprobes, :rng),
+    :rational => (:nodes, :nprobes, :cg_tol, :rng),
+    :taylor => (:terms, :nprobes, :lmin, :lmax, :rng),
+    :integration => (:nodes, :nprobes, :cg_tol, :rng),
+    :lowrank => (:r, :nprobes, :rng),
+)
+
 function logdet_estimate(f!, n::Int; method::Symbol=:slq, kwargs...)
-    method === :slq && return slq_logdet(f!, n; kwargs...)
-    method === :chebyshev && return chebyshev_logdet(f!, n; kwargs...)
-    method === :hutchpp && return hutchpp_logdet(f!, n; kwargs...)
-    method === :rational && return rational_logdet(f!, n; kwargs...)
-    method === :taylor && return taylor_logdet(f!, n; kwargs...)
-    method === :integration && return trace_integration_logdet(f!, n; kwargs...)
-    method === :lowrank && return lowrank_logdet(f!, n; kwargs...)
-    return throw(ArgumentError("unknown log-determinant estimation method :$(method)"))
+    names = findfirst(p -> p.first === method, _LOGDet_ESTIMATE_KWARGS)
+    names === nothing &&
+        throw(ArgumentError("unknown log-determinant estimation method :$(method)"))
+    accepted = _LOGDet_ESTIMATE_KWARGS[names].second
+    kw = (; (k => v for (k, v) in pairs(kwargs) if k in accepted)...)
+    method === :slq && return slq_logdet(f!, n; kw...)
+    method === :chebyshev && return chebyshev_logdet(f!, n; kw...)
+    method === :hutchpp && return hutchpp_logdet(f!, n; kw...)
+    method === :rational && return rational_logdet(f!, n; kw...)
+    method === :taylor && return taylor_logdet(f!, n; kw...)
+    method === :integration && return trace_integration_logdet(f!, n; kw...)
+    return lowrank_logdet(f!, n; kw...)
 end
 
 # ---------------------------------------------------------------------------
@@ -665,105 +682,6 @@ function _slq_adjoint(
     return est, apply
 end
 
-# Chebyshev: adjoint through the three-term recurrence. The spectral bounds
-# are treated as constants (stopped gradients) in the pullback.
-function _chebyshev_adjoint(
-    f!,
-    n::Int;
-    deg::Int=60,
-    nprobes::Int=10,
-    lmin=nothing,
-    lmax=nothing,
-    rng::Random.AbstractRNG=Random.default_rng(),
-)
-    a, b = if lmin === nothing || lmax === nothing
-        lanczos_bounds(f!, n; k=10, rng=rng)
-    else
-        (lmin, lmax)
-    end
-    αm = (b - a) / 2
-    βm = (a + b) / 2
-    m = deg + 1
-    cs = zeros(deg + 1)
-    for k in 1:m
-        θ = (k - 0.5) * π / m
-        t = cos(θ)
-        g = log(αm * t + βm)
-        for j in 0:deg
-            cs[j + 1] += g * cos(j * θ)
-        end
-    end
-    cs .*= 2 / m
-    cs[1] /= 2
-    aop! = (y, x) -> begin
-        f!(y, x)
-        y .-= βm .* x
-        y ./= αm
-    end
-    # store the Chebyshev vectors q_j = T_j(Â) z per probe
-    probes = Vector{Tuple{Vector{Float64},Vector{Vector{Float64}}}}()
-    trs = zeros(deg + 1)
-    z = zeros(n)
-    for _ in 1:nprobes
-        _rademacher!(z, rng)
-        qs = Vector{Vector{Float64}}()
-        q0 = copy(z)
-        push!(qs, copy(q0))
-        q1 = similar(q0)
-        aop!(q1, q0)
-        push!(qs, copy(q1))
-        trs[1] += dot(z, q0)
-        deg >= 1 && (trs[2] += dot(z, q1))
-        qprev = q0
-        qcur = q1
-        for j in 2:deg
-            qnew = similar(qcur)
-            aop!(qnew, qcur)
-            qnew .*= 2
-            qnew .-= qprev
-            trs[j + 1] += dot(z, qnew)
-            push!(qs, copy(qnew))
-            qprev, qcur = qcur, qnew
-        end
-        push!(probes, (copy(z), qs))
-    end
-    trs ./= nprobes
-    est = dot(cs, trs)
-    # adjoint of the Chebyshev moments via the backward recurrence of
-    # q_{j+1} = 2Â q_j - q_{j-1} (with q₀ = z): the cotangent of q_j is
-    #   ā_j = c_j z + 2Â ā_{j+1} - ā_{j+2},
-    # and ΔÂ = Σ_j 2 ā_{j+1} q_j', with dÂ = dA/αm. The backward pass only
-    # needs the fixed operator (it does not depend on the differentiated
-    # matrix), so it is precomputed outside the apply closure — the apply
-    # itself is a pure sum of dot products (Zygote-safe).
-    adj_data = Vector{Tuple{Vector{Vector{Float64}},Vector{Vector{Float64}}}}()
-    for (zr, qs) in probes
-        anext = zeros(n) # ā_{j+2}
-        acur = zeros(n) # ā_{j+1}
-        as = Vector{Vector{Float64}}(undef, deg + 1)
-        for j in deg:-1:0
-            aprev = cs[j + 1] .* zr .+ 2 .* _opapply(aop!, acur) .- anext
-            as[j + 1] = copy(acur) # ā_{j+1}
-            anext = acur
-            acur = aprev
-        end
-        push!(adj_data, (as, qs))
-    end
-    apply = function (X)
-        s = 0.0
-        for (as, qs) in adj_data
-            for j in 0:(deg - 1)
-                s += 2 * dot(as[j + 2], X * qs[j + 1])
-            end
-        end
-        return s / (nprobes * αm)
-    end
-    return est, apply
-end
-
-# Non-mutating operator application.
-_opapply(op!, v) = (y=similar(v); op!(y, v); y)
-
 # Hutch++/Nyström with the matrix logarithm: adjoint = Nyström part (C⁻¹
 # applied through CG solves) + SLQ adjoint on the deflated operator. No
 # factorization required.
@@ -838,64 +756,6 @@ function _rational_adjoint(
             end
         end
         return s / nprobes
-    end
-    return est, apply
-end
-
-# Taylor series at the spectrum midpoint: adjoint from the stored moment
-# vectors v_j = E^j z (the spectral bounds are stopped gradients).
-function _taylor_adjoint(
-    f!,
-    n::Int;
-    terms::Int=60,
-    nprobes::Int=10,
-    lmin=nothing,
-    lmax=nothing,
-    rng::Random.AbstractRNG=Random.default_rng(),
-)
-    a, b = if lmin === nothing || lmax === nothing
-        lanczos_bounds(f!, n; k=10, rng=rng)
-    else
-        (lmin, lmax)
-    end
-    c = (a + b) / 2
-    eop! = (y, x) -> begin
-        f!(y, x)
-        y ./= c
-        y .-= x
-    end
-    z = zeros(n)
-    data = Vector{Tuple{Vector{Float64},Vector{Vector{Float64}}}}()
-    trs = zeros(terms)
-    for _ in 1:nprobes
-        _rademacher!(z, rng)
-        vs = Vector{Vector{Float64}}()
-        v = copy(z)
-        wbuf = similar(v)
-        for j in 1:terms
-            eop!(wbuf, v)
-            trs[j] += dot(z, wbuf)
-            push!(vs, copy(wbuf))
-            v, wbuf = wbuf, v
-        end
-        push!(data, (copy(z), vs))
-    end
-    trs ./= nprobes
-    est = n * log(c)
-    for j in 1:terms
-        est += (isodd(j) ? 1.0 : -1.0) * trs[j] / j
-    end
-    apply = function (X)
-        s = 0.0
-        for (zr, vs) in data
-            for j in 1:terms
-                coeff = (isodd(j) ? 1.0 : -1.0) / j
-                for l in 0:(j - 1)
-                    s += coeff * dot(vs[l + 1], X * vs[j - l])
-                end
-            end
-        end
-        return s / (nprobes * c)
     end
     return est, apply
 end

@@ -77,13 +77,15 @@ end
 
 # Derivative of X(x) along the i-th coordinate: ∂X/∂xᵢ. (Jacobian-vector
 # products: NonconvexCore exposes no JVP, and value_jacobian would
-# materialize the dense Jacobian — Zygote's forward mode is kept here.)
+# materialize the dense Jacobian — Zygote's forward mode is kept here.
+# forward_jacobian returns J with J[i, j] = ∂(vec(X))[j]/∂xᵢ, i.e. the
+# derivative block is the i-th ROW of J reshaped column-major.)
 function _deriv_block(o::PSDBarrierOracle, x, i::Int)
     if o.c isa LinearFunction
         return reshape(view(o.c.A, :, i), o.dim, o.dim)
     end
-    J = Matrix(reshape(Zygote.forward_jacobian(o.c, x)[2], :, length(x)))
-    return reshape(J[:, i], o.dim, o.dim)
+    J = Zygote.forward_jacobian(o.c, x)[2]
+    return reshape(J[i, :], o.dim, o.dim)
 end
 
 # Derivative of X(x) along the direction w: ∂X/∂x · w.
@@ -91,8 +93,8 @@ function _deriv_dir(o::PSDBarrierOracle, x, w::AbstractVector)
     if o.c isa LinearFunction
         return reshape(o.c.A * w, o.dim, o.dim)
     end
-    J = Matrix(reshape(Zygote.forward_jacobian(o.c, x)[2], :, length(x)))
-    return reshape(J * w, o.dim, o.dim)
+    J = Zygote.forward_jacobian(o.c, x)[2]
+    return reshape(transpose(J) * w, o.dim, o.dim)
 end
 
 # ---------------------------------------------------------------------------
@@ -175,7 +177,7 @@ function psd_barrier_grad!(o::PSDBarrierOracle, x, g::AbstractVector)
         fill!(g, 0.0)
         for _ in 1:o.nprobes
             _rademacher!(z, o.rng)
-            u, hist = IterativeSolvers.cg(Matrix(X), z; reltol=o.cg_tol, maxiter=10 * o.dim)
+            u = IterativeSolvers.cg(Matrix(X), z; reltol=o.cg_tol, maxiter=10 * o.dim)
             for i in 1:length(x)
                 M = _deriv_block(o, x, i)
                 g[i] -= dot(u, M * z) / o.nprobes
@@ -406,7 +408,7 @@ function psd_hess_prod!(o::PSDBarrierOracle, x, w::AbstractVector, y::AbstractVe
         fill!(y, 0.0)
         for _ in 1:o.nprobes
             _rademacher!(z, o.rng)
-            u, hist = IterativeSolvers.cg(Matrix(X), z; reltol=o.cg_tol, maxiter=10 * o.dim)
+            u = IterativeSolvers.cg(Matrix(X), z; reltol=o.cg_tol, maxiter=10 * o.dim)
             Mwz = _deriv_dir(o, x, w) * z
             s = dot(u, Mwz)
             for i in 1:nvars
@@ -424,10 +426,14 @@ end
 # ---------------------------------------------------------------------------
 
 # Lanczos tridiagonalization of a symmetric matrix with full
-# reorthogonalization. Returns (T, Q) with Q' A Q = T.
+# reorthogonalization. Returns (T, Q) with Q' A Q = T. The start vector is
+# deterministic (a fixed non-random vector, generic w.r.t. invariant
+# subspaces): the matrix-free mode is documented as deterministic, and the
+# resulting products must be consistent functions of `A` for the Krylov
+# KKT solvers that apply them repeatedly.
 function _lanczos(A::Symmetric; tol::Float64=1e-10, maxiter::Int=200)
     n = size(A, 1)
-    q = randn(n)
+    q = [sin(0.7 * i) for i in 1:n]
     q ./= norm(q)
     qprev = zeros(n)
     β = 0.0

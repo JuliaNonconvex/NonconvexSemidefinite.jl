@@ -19,6 +19,8 @@ const CI_GROUP_FILES = String[
     "coverage_extra.jl",
     "features_extra.jl",
     "ks.jl",
+    "logdet_estimation.jl",
+    "oracles.jl",
 ]
 
 function _group_filter()

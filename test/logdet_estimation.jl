@@ -1,5 +1,5 @@
 @testitem "Log-determinant estimation" begin
-    using NonconvexSemidefinite, LinearAlgebra, Random, Zygote
+    using NonconvexSemidefinite, NonconvexCore, LinearAlgebra, Random, Zygote
 
     n = 30
     A = Matrix(
@@ -114,4 +114,68 @@
         ) / (2h) for (i, e_i) in enumerate(eachcol(Matrix{Float64}(I, 3, 3)))
     ]
     @test g ≈ gfd rtol = 1e-2
+
+    # spectral-bound defaults: the Chebyshev/Taylor estimators estimate the
+    # bounds internally with a short Lanczos run when lmin/lmax are absent
+    @test NonconvexSemidefinite.chebyshev_logdet(
+        f!, n; deg=60, nprobes=100, rng=copy(rng)
+    ) ≈ logdet(A) rtol = 1e-1
+    @test NonconvexSemidefinite.taylor_logdet(f!, n; terms=60, nprobes=100, rng=copy(rng)) ≈
+        logdet(A) rtol = 1e-1
+
+    # Hutch++ rrule with a nontrivial deflated range (n > k): exercises the
+    # range-restricted SLQ adjoint and the deflated-operator adjoint
+    c3 = z -> [z[1] z[2] 0.0; z[2] z[3] 0.5; 0.0 0.5 2.0]
+    x3 = [4.0, 1.0, 3.0]
+    ecols3 = eachcol(Matrix{Float64}(I, 3, 3))
+    g = Zygote.gradient(
+        z -> NonconvexSemidefinite.logdet_estimate_of(
+            c3, z; method=:hutchpp, k=2, lanczos_deg=3, nprobes=40, rng=copy(rng)
+        ),
+        x3,
+    )[1]
+    gfd = [
+        (
+            NonconvexSemidefinite.logdet_estimate_of(
+                c3,
+                x3 .+ h .* e_i;
+                method=:hutchpp,
+                k=2,
+                lanczos_deg=3,
+                nprobes=40,
+                rng=copy(rng),
+            ) - NonconvexSemidefinite.logdet_estimate_of(
+                c3,
+                x3 .- h .* e_i;
+                method=:hutchpp,
+                k=2,
+                lanczos_deg=3,
+                nprobes=40,
+                rng=copy(rng),
+            )
+        ) / (2h) for (i, e_i) in enumerate(ecols3)
+    ]
+    @test g ≈ gfd rtol = 1e-1
+
+    # LinearFunction-backed constraints: structural dispatch in the value
+    # and the reverse rule (X(x) = [x1 x2; x2 x1])
+    Af = [1.0 0.0; 0.0 1.0; 0.0 1.0; 1.0 0.0]
+    lf = NonconvexCore.LinearFunction(Af, zeros(4))
+    x2 = [2.0, 1.0]
+    est_lf = NonconvexSemidefinite.logdet_estimate_of(
+        lf, x2; method=:slq, lanczos_deg=2, nprobes=2000, rng=copy(rng)
+    )
+    @test est_lf ≈ log(3.0) rtol = 0.05
+    glf = Zygote.gradient(
+        z -> NonconvexSemidefinite.logdet_estimate_of(
+            lf, z; method=:slq, lanczos_deg=2, nprobes=2000, rng=copy(rng)
+        ),
+        x2,
+    )[1]
+    @test glf ≈ [4 / 3, -2 / 3] rtol = 0.05
+
+    # unknown methods are rejected on the reverse path too
+    @test_throws ArgumentError Zygote.gradient(
+        z -> NonconvexSemidefinite.logdet_estimate_of(c, z; method=:bogus, rng=copy(rng)), x
+    )
 end
