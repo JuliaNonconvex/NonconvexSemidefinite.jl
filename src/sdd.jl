@@ -381,20 +381,37 @@ function arrow_decompose(
         f_k = sd.f
         Ik = sd.I
         nk = length(Ik)
+        # The interface contributions, precomputed as (position in I_k,
+        # interface-variable index, sign) triples and unit basis vectors,
+        # so the constraint function itself stays mutation-free (Zygote
+        # rejects in-place updates of the assembled block).
+        inflows = Tuple{Int,Int,Int}[]
+        for it in intersections
+            k2, l2 = it.k, it.l
+            if k2 == k
+                for (i, q) in enumerate(pos[(k2, l2)])
+                    push!(inflows, (q, g_ranges[(k2, l2)][i], +1))
+                end
+            elseif l2 == k
+                for (i, q) in enumerate(pos[(l2, k2)])
+                    push!(inflows, (q, g_ranges[(k2, l2)][i], -1))
+                end
+            end
+        end
+        e_vecs = [
+            begin
+                e = zeros(nk)
+                e[q] = 1.0
+                e
+            end for q in 1:nk
+        ]
         fun = function (v)
             Kk = sd.Kfun(v[1:n_x])
-            Z = zeros(Float64, nk + 1, nk + 1)
-            Z[1:nk, 1:nk] .= Kk
-            last = copy(f_k)
-            for it in intersections
-                k2, l2 = it.k, it.l
-                k2 == k && (last[pos[(k2, l2)]] .+= v[g_ranges[(k2, l2)]])
-                l2 == k && (last[pos[(l2, k2)]] .-= v[g_ranges[(k2, l2)]])
+            last = f_k
+            for (q, r, s) in inflows
+                last = last .+ s .* v[r] .* e_vecs[q]
             end
-            Z[1:nk, nk + 1] .= last
-            Z[nk + 1, 1:nk] .= last
-            Z[nk + 1, nk + 1] = v[γ_ranges[k]][1]
-            return Z
+            return [Kk last; last' v[γ_ranges[k]][1]]
         end
         push!(set_cs, FunctionInSet(fun, PSDCone(nk + 1), c.flags))
     end
@@ -405,9 +422,16 @@ function arrow_decompose(
         push!(set_cs, FunctionInSet(y -> cc(y), cc.set, cc.flags))
     end
     g0 = zeros(off - n0 - p)
+    # The fictitious interface loads are boxed symmetrically: the cutting-
+    # plane subproblems drop the PSD blocks, and each cut is quadratic in
+    # g, so no finite set of cuts bounds g from below/above — without a
+    # box the subproblems are unbounded. The scale follows the load
+    # magnitude; any feasible decomposition of a feasible design has
+    # interface forces of this order (they are internal forces).
+    G = 1e3 * (1.0 + maximum(maximum, (abs.(sd.f) for sd in subdomains)))
     dm = VecModel(
         Objective(
-            y -> sum(y[γ_ranges[k]] for k in 1:p),
+            y -> sum(sum, (y[γ_ranges[k]] for k in 1:p)),
             model.objective.multiple,
             model.objective.flags,
         ),
@@ -425,8 +449,8 @@ function arrow_decompose(
         ]),
         VectorOfFunctions(set_cs),
         model.set_variables,
-        vcat(model.box_min, fill(-Inf, off - n0)),
-        vcat(model.box_max, fill(Inf, off - n0)),
+        vcat(model.box_min, fill(0.0, p), fill(-G, off - n0 - p)),
+        vcat(model.box_max, fill(Inf, p), fill(G, off - n0 - p)),
         vcat(float.(model.init), fill(γ0 / p, p), g0),
         vcat(model.integer, falses(off - n0)),
     )
