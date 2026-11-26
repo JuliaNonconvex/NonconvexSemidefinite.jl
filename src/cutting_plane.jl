@@ -198,6 +198,7 @@ function NonconvexCore.optimize!(workspace::SDCuttingPlaneWorkspace)
         ArgumentError("SDCuttingPlaneAlg requires at least one semidefinite constraint."),
     )
     cuts = IneqConstraint[]
+    cutvecs = Vector{Float64}[]
     x = copy(x0)
     min_eigs = Float64[]
     n_cuts = 0
@@ -223,11 +224,18 @@ function NonconvexCore.optimize!(workspace::SDCuttingPlaneWorkspace)
         end
         push!(min_eigs, worst)
         isempty(violated) && break
+        added = 0
         for (v, r, Pfun) in violated
             n_cuts >= max_cuts && break
+            # skip cuts (anti)parallel to an earlier one: they add nothing
+            any(pv -> length(pv) == length(v) && abs(dot(pv, v)) > 1 - 1e-10, cutvecs) &&
+                continue
             push!(cuts, IneqConstraint(_cut_function(Pfun, v, r), 0.0))
+            push!(cutvecs, v)
             n_cuts += 1
+            added += 1
         end
+        added == 0 && break   # every violated direction is already cut
     end
     obj = getobjective(model)
     obj === nothing && throw(ArgumentError("The model has no objective."))

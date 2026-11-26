@@ -282,10 +282,13 @@
     # the identities above (the matrix-sum identity and Theorem 2.3); here
     # both sides are solved by the same cutting-plane algorithm as a
     # sanity check of the assembled models. The original 41×41 problem
-    # converges to a PSD-feasible point. The decomposed problem's cuts
-    # bite far more slowly (each cut is quadratic in the fictitious loads,
-    # so no finite set of cuts fences them off), so its individual blocks
-    # only approach PSD; the reassembled arrow matrix is what is checked.
+    # converges to a PSD-feasible point. On the decomposed problem the
+    # cuts are linear in the variables but the fictitious interface loads
+    # are only indirectly constrained (the PSD blocks that bound them are
+    # dropped from the subproblems), so the cut sequence oscillates and
+    # the worst block eigenvalue plateaus around -1e-1 rather than
+    # reaching `eig_tol` in the iteration budget; the reassembled arrow
+    # matrix is what is checked there.
     alg = SDCuttingPlaneAlg(IpoptAlg())
     ropt = NonconvexCore.optimize(
         vm,
