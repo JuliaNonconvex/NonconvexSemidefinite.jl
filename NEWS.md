@@ -1,5 +1,16 @@
 # NEWS
 
+## Unreleased
+
+- `NonconvexSemidefiniteGradientFlowExt`: the semidefinite support for
+  `NullSpaceAlg` (NonconvexGradientFlow.jl) now lives here, as a weak-dep
+  extension loaded when NonconvexGradientFlow is loaded — the conic
+  null-space projection of the Feppon–Allaire–Dapogny gradient flow:
+  tangent-cone construction from `project_psd` eigendecompositions, the
+  conic dual QP over the negative polar cone of the PSD tangent cone
+  (projected gradient), the exact tangency projection, signed boundary
+  stabilization and a violation-scale step cap.
+
 ## 0.4.6
 
 - Docs: the logo now appears only in the sidebar, not in the page body.
