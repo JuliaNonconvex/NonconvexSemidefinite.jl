@@ -59,7 +59,7 @@ const SDPBlock = @NamedTuple{
 function _sd_blocks(m::VecModel, x, fcalls, options)
     blocks = SDPBlock[]
     for (idx, c) in enumerate(m.sd_constraints.fs)
-        Pv, J = _jac(z -> c(z), x, fcalls)
+        Pv, J = _jac(c.f, x, fcalls)
         d = c.dim
         P = reshape(Pv, d, d)
         P = (P + P') / 2
